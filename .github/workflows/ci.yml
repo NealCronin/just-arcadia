@@ -1,0 +1,86 @@
+name: CI
+
+on:
+  push:
+    branches: [headless-core]
+  pull_request:
+    branches: [headless-core]
+  workflow_dispatch:
+
+jobs:
+  tests:
+    name: Tests (Python ${{ matrix.python-version }} on ${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        python-version: ["3.11", "3.12"]
+        exclude:
+          # Windows only tests on 3.11 to match the minimum matrix
+          - os: windows-latest
+            python-version: "3.12"
+          # macOS only tests on 3.11
+          - os: macos-latest
+            python-version: "3.12"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: "pip"
+
+      - name: Upgrade pip
+        run: python -m pip install --upgrade pip
+
+      - name: Install package and dev dependencies
+        run: python -m pip install -e ".[dev]"
+
+      - name: Check formatting
+        run: ruff format --check .
+
+      - name: Check linting
+        run: ruff check .
+
+      - name: Type-check
+        run: mypy src/arcadia
+
+      - name: Run tests
+        run: pytest
+
+  build:
+    name: Build and install wheel smoke test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Upgrade pip
+        run: python -m pip install --upgrade pip
+
+      - name: Install build tools
+        run: python -m pip install build
+
+      - name: Build wheel
+        run: python -m build --wheel --no-isolation
+
+      - name: Create clean virtual environment
+        run: |
+          python -m venv /tmp/arcadia-test-venv
+          /tmp/arcadia-test-venv/bin/python -m pip install --upgrade pip
+
+      - name: Install only the wheel
+        run: |
+          python -m pip install dist/*.whl --target /tmp/arcadia-wheel-test
+
+      - name: Verify import in clean environment
+        run: |
+          PYTHONPATH=/tmp/arcadia-wheel-test python -c "import arcadia; print(arcadia.__version__)"

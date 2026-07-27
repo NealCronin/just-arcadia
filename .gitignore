@@ -1,0 +1,64 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+*.egg
+dist/
+build/
+.eggs/
+
+# Virtual environments
+.venv/
+.venv.bak/
+env/
+venv/
+venv.bak/
+
+# Environment
+.env
+.env.*
+!/.env.example
+
+# Test
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.mypy_cache/
+.pytest_cache/
+
+# Build
+*.manifest
+*.spec
+*.lock
+
+# IDE / Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+._*
+
+# Model caches and datasets
+models/
+*.gguf
+*.bin
+*.safetensors
+cache/
+model_cache/
+
+# Run outputs
+runs/
+run_output/
+*.log
+
+# Local secrets
+*.key
+*.pem
+secrets/
+credentials/
