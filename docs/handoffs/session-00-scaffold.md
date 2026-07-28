@@ -46,7 +46,7 @@ There is no current licensing declaration; licensing is intentionally deferred.
 - `docs/decisions/0004-module-per-session.md` — ADR 0004
 - `docs/sessions/session-template.md` — session template
 - `docs/handoffs/README.md` — handoff format between sessions
-- `SESSION_0_LOCAL_AGENT_PROMPT.md` — original Session 0 implementation prompt
+- `docs/history/session-00-agent-prompt.md` — original Session 0 implementation prompt (archived)
 
 ## Public API
 
@@ -190,13 +190,14 @@ python -m venv .wheel-test-venv
 .wheel-test-venv/bin/python -m pip install dist/*.whl
 # Result: Successfully installed arcadia-core-0.1.0 — PASS
 
-          .wheel-test-venv/bin/python -c "import arcadia; print(arcadia.__version__)"
+# Verify clean import
+.wheel-test-venv/bin/python -c "import arcadia; print(arcadia.__version__)"
 # Result: 0.1.0 — PASS
 ```
 
 ### GitHub Actions CI status
 
-All CI jobs on `headless-core` branch (commit `a43f856`):
+All CI jobs on `headless-core` branch:
 
 - Tests (Python 3.11 on ubuntu-latest) — success
 - Tests (Python 3.12 on ubuntu-latest) — success
@@ -220,6 +221,7 @@ All CI jobs on `headless-core` branch (commit `a43f856`):
 - No licensing declaration is included; licensing is intentionally deferred.
 - Repository URLs corrected to reference `NealCronin/just-arcadia`.
 - The legacy implementation is external and read-only.
+- Analysis-state enforcement lives with the orchestrator, not compute nodes.
 
 ## Known limitations
 
@@ -230,7 +232,6 @@ All CI jobs on `headless-core` branch (commit `a43f856`):
   access allows: `uv lock` or `pip freeze > requirements.lock`.
 - No CUDA, Metal, llama.cpp, SAM, or Priority Map validation is performed in
   Session 0 CI. These will be validated in later sessions on self-hosted systems.
-- Licensing is not declared. This is intentional for the prototype phase.
 
 ## Assumptions
 
@@ -255,3 +256,6 @@ All CI jobs on `headless-core` branch (commit `a43f856`):
 - The legacy implementation is available externally at
   [`NealCronin/Almost-ARCADIA`](https://github.com/NealCronin/Almost-ARCADIA).
   A local reference path may be supplied by the operator.
+- The `test_no_future_implementation_packages` test is intentionally temporary
+  and should be removed when `arcadia.services`, `arcadia.analysis`, or
+  `arcadia.tools` are created.
