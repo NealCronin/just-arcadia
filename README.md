@@ -3,10 +3,9 @@
 ARCADIA is being rebuilt as a headless Python package for running fixed-sequence
 research pipelines that depend on local or remote model inference.
 
-This branch contains the **Session 0 scaffold**: project tooling, package
-metadata, continuous integration, and the minimal installable `arcadia` package.
-No domain functionality (inference, service lifecycle, transport, pipeline,
-storage, or UI) is implemented yet.
+The repository currently contains the completed Session 0 scaffold and the
+planned Session 1 domain-model work order. No inference, service lifecycle,
+transport, pipeline, storage, or UI functionality is implemented yet.
 
 ## Legacy implementation
 
@@ -20,14 +19,19 @@ or included in the new package.
 
 ## Documentation
 
-Architecture, contracts, and session documents live in [`docs/`](docs/):
+Project-wide documentation lives in [`docs/`](docs/):
 
 - [`docs/architecture.md`](docs/architecture.md) — system behavior and boundaries
 - [`docs/contracts.md`](docs/contracts.md) — module dependency rules and contracts
 - [`docs/legacy-inventory.md`](docs/legacy-inventory.md) — migration map from legacy
-- [`docs/decisions/`](docs/decisions/) — architecture decision records (ADRs)
-- [`docs/sessions/session-template.md`](docs/sessions/session-template.md) — session template
-- [`docs/handoffs/README.md`](docs/handoffs/README.md) — handoff format between sessions
+- [`docs/decisions/`](docs/decisions/) — architecture decision records
+- [`docs/sessions/`](docs/sessions/) — one canonical work-order and completion file per development session
+
+The current implementation session is:
+
+- [`docs/sessions/01-domain-models-and-errors.md`](docs/sessions/01-domain-models-and-errors.md)
+
+See [`docs/sessions/README.md`](docs/sessions/README.md) for the session workflow.
 
 ## Development environment
 
