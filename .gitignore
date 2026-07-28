@@ -62,3 +62,6 @@ run_output/
 *.pem
 secrets/
 credentials/
+
+# Harness-local planning artifacts
+local:/
