@@ -140,12 +140,19 @@ When it submits the same effective specification to an already-ready port, the n
 
 When it submits a different specification to the same port, the node:
 
-1. verifies that no analysis configuration change is being applied during an active run;
+1. serializes the port operation;
 2. stops the existing service;
 3. resolves or downloads the requested model;
 4. starts the replacement service;
 5. health-checks it;
 6. reports the new endpoint as ready.
+
+The orchestrator must not submit a replacement service configuration while an
+analysis is active. A compute node is session-stateless and cannot reliably
+know whether the orchestrator is currently running an analysis; enforcing
+global analysis policy on the node would couple service management to
+analysis orchestration. The node owns only port-operation serialization, not
+analysis-state enforcement.
 
 A service remains running until:
 
