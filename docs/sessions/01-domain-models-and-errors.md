@@ -1,6 +1,6 @@
 # Session 01: Domain Models and Typed Errors
 
-- Status: planned
+- Status: completed
 - Branch: `session/01-domain-models`
 - Target: merge into `headless-core` after review
 - Module: `arcadia.models`
@@ -550,13 +550,13 @@ from arcadia.models import LlamaServiceSpec, ServiceType
 
 ## Definition of done
 
-- [ ] Pydantic 2 is the only new required runtime dependency.
-- [ ] `arcadia.models` implements every required public export.
-- [ ] Success and failure behavior are tested.
-- [ ] Models are frozen, strict, side-effect-free, and JSON-round-trippable.
-- [ ] `import arcadia` remains lightweight.
-- [ ] Ruff, mypy, pytest, build, and clean-wheel checks pass.
-- [ ] The completion record below is filled honestly.
+- [x] Pydantic 2 is the only new required runtime dependency.
+- [x] `arcadia.models` implements every required public export.
+- [x] Success and failure behavior are tested.
+- [x] Models are frozen, strict, side-effect-free, and JSON-round-trippable.
+- [x] `import arcadia` remains lightweight.
+- [x] Ruff, mypy, pytest, build, and clean-wheel checks pass.
+- [x] The completion record below is filled honestly.
 
 ## Stop conditions
 
@@ -575,40 +575,99 @@ The implementation agent must replace the placeholders before stopping.
 
 ## Outcome
 
-`Not completed yet.`
+Session 01 is complete. The `arcadia.models` package implements the full domain model and typed error contract: 34 public symbols covering errors, common types (NodeAddress, HuggingFaceFileSpec, runtime settings), service specs/endpoints/status, analysis status, and artifact records. All models use frozen Pydantic 2 with strict validation, JSON round-trip support, and defensive copying. All definition-of-done validation passes (157 tests, ruff, mypy, build, clean-venv wheel install).
 
 ## Files changed
 
-`Not completed yet.`
+### Source
+- `pyproject.toml` — added `pydantic>=2,<3` as the only required runtime dependency
+- `src/arcadia/models/__init__.py` — public re-export surface (34 symbols)
+- `src/arcadia/models/common.py` — ModelBase, NodeAddress, HuggingFaceFileSpec, RuntimeSettings, ArtifactVisibility
+- `src/arcadia/models/errors.py` — ArcadiaError, ArcadiaErrorInfo, and 11 typed error subclasses
+- `src/arcadia/models/services.py` — ServiceSpec union, ServiceEndpoint, ServiceStatus, OperationStatus
+- `src/arcadia/models/analysis.py` — AnalysisState, StageState, AnalysisSpec, StageStatus, AnalysisStatus
+- `src/arcadia/models/artifacts.py` — ArtifactRecord
+
+### Tests
+- `tests/unit/models/__init__.py` — test package marker
+- `tests/unit/models/test_common.py` — NodeAddress, HuggingFaceFileSpec, settings, ArtifactVisibility
+- `tests/unit/models/test_errors.py` — error defaults, retryability, cause retention, to_info()
+- `tests/unit/models/test_services.py` — projector rules, parse_service_spec, state coherence
+- `tests/unit/models/test_analysis_and_artifacts.py` — analysis/stage coherence, artifact path validation
+- `tests/unit/models/test_serialization.py` — JSON round trips for all model families
+
+### Documentation
+- `docs/sessions/01-domain-models-and-errors.md` — updated status, definition-of-done, completion record
 
 ## Delivered public API
 
-`Not completed yet.`
+`from arcadia.models import ...` exposes all 34 required symbols:
+ArcadiaError, ArcadiaErrorInfo, ConfigurationError, ServiceError, ServiceConflictError,
+ServiceStartupError, ServiceHealthError, ServiceNotRunningError, InstructionError,
+InferenceError, InferenceTimeoutError, AnalysisError, ArtifactError, NodeAddress,
+HuggingFaceFileSpec, RequestedRuntimeSettings, ResolvedRuntimeSettings, ServiceType,
+ServiceState, OperationState, LlamaServiceSpec, SamServiceSpec, ServiceSpec,
+ServiceEndpoint, ServiceStatus, OperationStatus, parse_service_spec, AnalysisState,
+StageState, AnalysisSpec, AnalysisStatus, StageStatus, ArtifactVisibility, ArtifactRecord.
+
+The root `arcadia` package does NOT re-export these — `arcadia.models` must be imported explicitly.
 
 ## State and side effects
 
-`Not completed yet.`
+The `arcadia.models` package owns no runtime state. Models are frozen (immutable). Importing `arcadia.models` performs no filesystem, network, subprocess, model-loading, or GPU operations. Defensively copy mapping inputs are enforced on all JSON-value fields. Naive datetimes are rejected; timezone-aware datetimes are normalized to UTC. JSON round trips (`model_dump(mode="json")` → `model_validate()`) succeed for all transport-facing models.
 
 ## Errors and events
 
-`Not completed yet.`
+12 typed error classes (ArcadiaError base + 11 subclasses) with stable codes, retryability, and structured JSON details. Causes are retained on the exception object but excluded from serialization. `InferenceTimeoutError` is the only retryable error by default. `ArcadiaErrorInfo.to_info()` provides a serializable snapshot.
 
 ## Tests and validation
 
-`Not completed yet.`
+All definition-of-done checks pass:
+- `python -m pip install -e ".[dev]"` — success
+- `ruff format --check .` — 19 files already formatted
+- `ruff check .` — all checks passed
+- `mypy src/arcadia` — no issues found in 7 source files
+- `pytest` — 157 passed
+- `python -m build` — built wheel and sdist
+- Clean-venv wheel install + `import arcadia; from arcadia.models import LlamaServiceSpec, ServiceType` — success
+- `import arcadia` confirmed lightweight (no heavy modules in sys.modules)
+
+Test files:
+- `tests/unit/models/test_common.py` — NodeAddress, HuggingFaceFileSpec, settings, ArtifactVisibility
+- `tests/unit/models/test_errors.py` — error defaults/retryability, cause retention, to_info(), ArcadiaErrorInfo
+- `tests/unit/models/test_services.py` — projector rules, parse_service_spec, Service/Operation state coherence
+- `tests/unit/models/test_analysis_and_artifacts.py` — analysis/stage coherence, artifact path validation
+- `tests/unit/models/test_serialization.py` — JSON round trips for all 14 model families
 
 ## Decisions and deviations
 
-`Not completed yet.`
+No deviations from the session contract. All required exports, rules, and validation behaviors are implemented as specified.
+
+Implementation decisions (within the specified choices):
+- `ArtifactRecord.relative_path` rejects backslashes rather than normalizing them to forward slashes (spec permits either approach).
+- `ArcadiaError.cause` accepts any object, retained for debugging but excluded from serialization via `to_info()`.
+- Datetime validators accept ISO 8601 strings (from JSON round trips) in addition to `datetime` objects, parsing and normalizing to UTC.
 
 ## Known limitations
 
-`Not completed yet.`
+No known limitations. The session implements the full contract without scope reduction.
 
 ## Assumptions and risks
 
-`Not completed yet.`
+Later sessions depend on the stable contract defined here. The models module adds Pydantic 2 as a new runtime dependency, which is recorded in `pyproject.toml`. Subsequent sessions (configuration, services, storage, etc.) must not be blocked by this dependency.
 
 ## Next-session prerequisites
 
-`Not completed yet.`
+`from arcadia.models import ...` provides the full domain vocabulary:
+
+- Errors: `ArcadiaError`, `ArcadiaErrorInfo`, and 11 typed subclasses with stable codes/retryability
+- Addresses: `NodeAddress` (IPv4/IPv6/hostname with `base_url` property)
+- Model files: `HuggingFaceFileSpec` (repo_id/filename/revision validation)
+- Settings: `RequestedRuntimeSettings`, `ResolvedRuntimeSettings` (defensively copied, JSON-compatible)
+- Services: `ServiceType`, `ServiceState`, `OperationState`, `LlamaServiceSpec`, `SamServiceSpec`, `ServiceSpec`, `parse_service_spec`, `ServiceEndpoint`, `ServiceStatus`, `OperationStatus`
+- Analysis: `AnalysisState`, `StageState`, `AnalysisSpec`, `StageStatus`, `AnalysisStatus`
+- Artifacts: `ArtifactVisibility`, `ArtifactRecord`
+
+All models are frozen, JSON-round-trippable, and reject unknown fields. Datetimes are UTC-normalized; naive datetimes are rejected. The root `arcadia` package remains lightweight — `arcadia.models` must be imported explicitly.
+
+Session 02 (Configuration) can build on this foundation by adding `arcadia.config`, which depends on `arcadia.models` for validated domain types.

@@ -8,6 +8,7 @@ version = "0.1.0"
 description = "ARCADIA: headless research orchestration for fixed-sequence ML pipelines"
 readme = "README.md"
 requires-python = ">=3.11"
+dependencies = ["pydantic>=2,<3"]
 
 authors = [
     { name = "ARCADIA" },

@@ -46,6 +46,8 @@ htmlcov/
 
 # Model caches and datasets
 models/
+!src/arcadia/models/
+!tests/unit/models/
 *.gguf
 *.bin
 *.safetensors

@@ -1,0 +1,307 @@
+"""Common domain types and shared configuration for arcadia.models.
+
+This module is the foundation of the domain layer. It must not import HTTP,
+subprocess, filesystem, UI, or heavy inference libraries.
+"""
+
+from __future__ import annotations
+
+import ipaddress
+import math
+import re
+from enum import Enum
+from typing import Any, Literal
+
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+__all__ = [
+    "JsonValue",
+    "ModelBase",
+    "NodeAddress",
+    "HuggingFaceFileSpec",
+    "RequestedRuntimeSettings",
+    "ResolvedRuntimeSettings",
+    "ArtifactVisibility",
+]
+
+# Type alias for recursive JSON-compatible values. Used in annotations.
+JsonValue = Any
+
+
+# ---------------------------------------------------------------------------
+# JSON validation helpers
+# ---------------------------------------------------------------------------
+
+_HOST_CONTROLS = "".join(chr(i) for i in range(0, 0x20)) + "\x7F"
+
+
+def _is_json_value(value: Any) -> bool:
+    """Return True when ``value`` is JSON-compatible after recursive inspection."""
+    if value is None:
+        return True
+    if isinstance(value, bool):
+        return True
+    if isinstance(value, int):
+        return True
+    if isinstance(value, float):
+        return math.isfinite(value)
+    if isinstance(value, str):
+        return True
+    if isinstance(value, list):
+        return all(_is_json_value(item) for item in value)
+    if isinstance(value, dict):
+        return all(isinstance(k, str) and _is_json_value(v) for k, v in value.items())
+    return False
+
+
+def _deep_copy_json(value: Any) -> Any:
+    """Return a defensive copy of a JSON value, or raise ValueError."""
+    if value is None or isinstance(value, bool):
+        return value
+    if isinstance(value, int) or isinstance(value, float):
+        if isinstance(value, float) and not math.isfinite(value):
+            raise ValueError("non-finite float is not JSON-compatible")
+        return value
+    if isinstance(value, str):
+        return value
+    if isinstance(value, list):
+        return [_deep_copy_json(item) for item in value]
+    if isinstance(value, dict):
+        return {str(k): _deep_copy_json(v) for k, v in value.items()}
+    raise ValueError(f"value is not JSON-compatible: {type(value).__name__}")
+
+
+def _validate_json_mapping(value: Any) -> Any:
+    """Validate a JSON-compatible mapping and return a defensive copy."""
+    if not isinstance(value, dict):
+        raise ValueError(f"expected a mapping, got {type(value).__name__}")
+    if not _is_json_value(value):
+        raise ValueError("mapping contains non-JSON-compatible values")
+    return {str(k): _deep_copy_json(v) for k, v in value.items()}
+
+
+# ---------------------------------------------------------------------------
+# Shared model base
+# ---------------------------------------------------------------------------
+
+
+class ModelBase(BaseModel):
+    """Shared base for arcadia.models using Pydantic 2.
+
+    Concrete models inherit this config: extra fields are rejected, models
+    are frozen (hashable when all fields are hashable), and defaults are
+    validated.
+    """
+
+    model_config = ConfigDict(
+        extra="forbid",
+        frozen=True,
+        validate_default=True,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Host and port validation (shared by NodeAddress and ServiceEndpoint)
+# ---------------------------------------------------------------------------
+
+
+def _validate_host(value: Any) -> str:
+    if not isinstance(value, str):
+        raise ValueError("host must be a string")
+    host = value.strip()
+    if not host:
+        raise ValueError("host must not be empty")
+    if "\x00" in host:
+        raise ValueError("host must not contain null bytes")
+    if any(c in host for c in _HOST_CONTROLS):
+        raise ValueError("host must not contain control characters")
+    if "/" in host:
+        raise ValueError("host must not contain a path or scheme separator")
+    return host
+
+
+def _validate_port(value: Any) -> int:
+    if isinstance(value, bool):
+        raise ValueError("port must be an integer, not a bool")
+    if not isinstance(value, int):
+        raise ValueError("port must be an integer")
+    if not (1 <= value <= 65535):
+        raise ValueError("port must be between 1 and 65535")
+    return value
+
+
+# ---------------------------------------------------------------------------
+# NodeAddress
+# ---------------------------------------------------------------------------
+
+
+class NodeAddress(ModelBase):
+    """Address of an Arcadia instruction endpoint.
+
+    ``host`` accepts IPv4, IPv6, and ordinary hostnames. The ``base_url``
+    property brackets IPv6 addresses per RFC 3986.
+    """
+
+    host: str
+    instruction_port: int
+    scheme: Literal["http"] = "http"
+
+    @field_validator("host", mode="before")
+    @classmethod
+    def _validate_host_field(cls, value: Any) -> str:
+        return _validate_host(value)
+
+    @field_validator("instruction_port", mode="before")
+    @classmethod
+    def _validate_port_field(cls, value: Any) -> int:
+        return _validate_port(value)
+
+    @property
+    def base_url(self) -> str:
+        host = self.host
+        try:
+            if ipaddress.ip_address(host).version == 6:
+                host = f"[{host}]"
+        except ValueError:
+            pass
+        return f"{self.scheme}://{host}:{self.instruction_port}"
+
+
+# ---------------------------------------------------------------------------
+# HuggingFaceFileSpec
+# ---------------------------------------------------------------------------
+
+_REPO_OWNER_REPO = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?$")
+
+
+def _validate_repo_id(value: Any) -> str:
+    if not isinstance(value, str):
+        raise ValueError("repo_id must be a string")
+    repo_id = value.strip()
+    if "/" not in repo_id:
+        raise ValueError("repo_id must be exactly 'owner/repository'")
+    owner, _, repository = repo_id.partition("/")
+    if "/" in repository or not owner or not repository:
+        raise ValueError("repo_id must be exactly 'owner/repository'")
+    if not _REPO_OWNER_REPO.match(owner) or not _REPO_OWNER_REPO.match(repository):
+        raise ValueError("repo_id owner/repository contain invalid characters")
+    return repo_id
+
+
+def _validate_filename(value: Any) -> str:
+    if not isinstance(value, str):
+        raise ValueError("filename must be a string")
+    filename = value.strip()
+    if not filename:
+        raise ValueError("filename must not be empty")
+    if "\x00" in filename or any(c in filename for c in _HOST_CONTROLS):
+        raise ValueError("filename contains control characters")
+    if "\\" in filename:
+        raise ValueError("filename must not contain backslashes")
+    if " " in filename or "\t" in filename:
+        raise ValueError("filename must not contain whitespace")
+    if not filename.lower().endswith(".gguf"):
+        raise ValueError("filename must end with .gguf")
+    if "/" in filename:
+        parts = filename.split("/")
+        for part in parts:
+            if part == "":
+                raise ValueError("filename must not contain absolute paths or empty path components")
+            if part == "." or part == "..":
+                raise ValueError("filename must not contain '.' or '..' components")
+    return filename
+
+
+def _validate_revision(value: Any) -> str:
+    if not isinstance(value, str):
+        raise ValueError("revision must be a string")
+    revision = value.strip()
+    if not revision:
+        raise ValueError("revision must not be empty")
+    if "\x00" in revision or any(c in revision for c in _HOST_CONTROLS):
+        raise ValueError("revision contains control characters")
+    if revision in (".", ".."):
+        raise ValueError("revision must not be '.' or '..'")
+    return revision
+
+
+class HuggingFaceFileSpec(ModelBase):
+    """A Hugging Face model file specification, validated structurally."""
+
+    repo_id: str
+    filename: str
+    revision: str = "main"
+
+    @field_validator("repo_id", mode="before")
+    @classmethod
+    def _validate_repo_id_field(cls, value: Any) -> str:
+        return _validate_repo_id(value)
+
+    @field_validator("filename", mode="before")
+    @classmethod
+    def _validate_filename_field(cls, value: Any) -> str:
+        return _validate_filename(value)
+
+    @field_validator("revision", mode="before")
+    @classmethod
+    def _validate_revision_field(cls, value: Any) -> str:
+        return _validate_revision(value)
+
+
+# ---------------------------------------------------------------------------
+# Runtime settings
+# ---------------------------------------------------------------------------
+
+
+class RequestedRuntimeSettings(ModelBase):
+    """User-requested runtime settings, validated but uninterpreted."""
+
+    values: dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("values", mode="before")
+    @classmethod
+    def _validate_values(cls, value: Any) -> Any:
+        return _validate_json_mapping(value)
+
+
+class ResolvedRuntimeSettings(ModelBase):
+    """Runtime settings after resolution. ``backend`` is non-empty."""
+
+    backend: str
+    values: dict[str, Any]
+    notes: tuple[str, ...] = ()
+
+    @field_validator("backend")
+    @classmethod
+    def _backend_non_empty(cls, value: Any) -> str:
+        if not isinstance(value, str) or not value.strip():
+            raise ValueError("backend must be a non-empty string")
+        return value
+
+    @field_validator("values", mode="before")
+    @classmethod
+    def _validate_values(cls, value: Any) -> Any:
+        return _validate_json_mapping(value)
+
+    @field_validator("notes")
+    @classmethod
+    def _validate_notes(cls, value: Any) -> tuple[str, ...]:
+        if not isinstance(value, (tuple, list)):
+            raise ValueError("notes must be a sequence of strings")
+        result = tuple(str(n) for n in value)
+        for note in result:
+            if not note:
+                raise ValueError("notes must not contain empty strings")
+        return result
+
+
+# ---------------------------------------------------------------------------
+# ArtifactVisibility (lives here so all model files can import it)
+# ---------------------------------------------------------------------------
+
+
+class ArtifactVisibility(str, Enum):
+    """Visibility of a recorded artifact."""
+
+    final = "final"
+    internal = "internal"
