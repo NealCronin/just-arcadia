@@ -211,7 +211,8 @@ Local and remote compute access must present equivalent high-level operations, i
 - operation progress;
 - diagnostics;
 - logs;
-- stop or replace service.
+- replace the service assigned to a port;
+- stop all owned services during node shutdown.
 
 A local implementation may call a ServiceManager directly. A remote implementation may use HTTP. Higher layers must not branch on local versus remote for pipeline semantics.
 

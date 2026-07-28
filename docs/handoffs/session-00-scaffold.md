@@ -190,9 +190,9 @@ python -m venv .wheel-test-venv
 .wheel-test-venv/bin/python -m pip install dist/*.whl
 # Result: Successfully installed arcadia-core-0.1.0 — PASS
 
-# Verify clean import
-.wheel-test-venv/bin/python -c "import arcadia; print(arcadia.__version__)"
+          .wheel-test-venv/bin/python -c "import arcadia; print(arcadia.__version__)"
 # Result: 0.1.0 — PASS
+```
 
 ### GitHub Actions CI status
 
@@ -203,7 +203,6 @@ All CI jobs on `headless-core` branch (commit `a43f856`):
 - Tests (Python 3.11 on windows-latest) — success
 - Tests (Python 3.11 on macos-latest) — success
 - Build and install wheel smoke test — success
-```
 
 ## Architectural decisions
 
