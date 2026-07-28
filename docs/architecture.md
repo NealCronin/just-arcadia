@@ -159,6 +159,12 @@ A service remains running until:
 - the node process exits; or
 - the orchestrator replaces the configuration assigned to that port.
 
+Services are stopped during graceful node shutdown. The service-manager session
+must also define best-effort cleanup behavior for abnormal termination, as a
+hard crash, forced termination, or machine failure may leave child processes
+alive unless the service manager uses platform mechanisms such as Windows Job
+Objects, Unix process groups, or parent-death signals.
+
 ### 5.4 Model source
 
 For llama.cpp-backed services, the orchestrator supplies:

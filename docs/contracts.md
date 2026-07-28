@@ -282,7 +282,7 @@ A wrapper may not:
 
 Initial concurrency rules:
 
-- one active analysis globally;
+- one active analysis per orchestrator process;
 - sequential tool stages;
 - operations affecting the same service port are serialized;
 - unrelated service ports may start independently;
