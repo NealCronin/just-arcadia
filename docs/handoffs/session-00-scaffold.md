@@ -89,6 +89,8 @@ Not applicable — no concurrent or background operations exist.
   are not imported by `import arcadia`
 - `tests/test_package.py::test_no_future_implementation_packages` — verifies that
   `arcadia.services`, `arcadia.analysis`, and `arcadia.tools` do not exist
+- `tests/test_package.py::test_package_versions_match` — verifies `arcadia.__version__`
+  matches the installed package metadata (`version("arcadia-core")`)
 
 ## Validation performed
 
@@ -117,7 +119,7 @@ mypy src/arcadia
 
 # Tests
 pytest
-# Result: 4 passed in 0.03s — PASS
+# Result: 5 passed in 0.03s — PASS
 
 # Build
 python -m build
@@ -168,7 +170,7 @@ mypy src/arcadia
 
 # Tests
 pytest
-# Result: 4 passed — PASS
+# Result: 5 passed — PASS
 
 # Build
 python -m build
@@ -197,7 +199,7 @@ python -m venv .wheel-test-venv
 
 ### GitHub Actions CI status
 
-All CI jobs on `headless-core` branch:
+All CI jobs on `headless-core` branch (commit `13eddb3`):
 
 - Tests (Python 3.11 on ubuntu-latest) — success
 - Tests (Python 3.12 on ubuntu-latest) — success
