@@ -4,7 +4,7 @@ Covers analysis/stage state coherence, artifact path validation, and
 datetime normalization.
 """
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from pydantic import ValidationError
@@ -22,7 +22,7 @@ from arcadia.models.errors import ArcadiaErrorInfo
 
 
 def _now() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 # ---------------------------------------------------------------------------
@@ -49,7 +49,9 @@ class TestAnalysisSpec:
     def test_unknown_field_rejected(self) -> None:
         with pytest.raises(ValidationError):
             AnalysisSpec(
-                tool_name="tool", input_path="/in", output_root="/out",
+                tool_name="tool",
+                input_path="/in",
+                output_root="/out",
                 extra="nope",
             )
 
@@ -88,7 +90,10 @@ class TestStageStatusCoherence:
         later = now + timedelta(seconds=10)
         with pytest.raises(ValidationError):
             StageStatus(
-                name="s", state=StageState.completed, started_at=now, finished_at=later,
+                name="s",
+                state=StageState.completed,
+                started_at=now,
+                finished_at=later,
                 error=ArcadiaErrorInfo(code="err", message="fail"),
             )
 
@@ -111,12 +116,35 @@ class TestStageStatusCoherence:
         earlier = now - timedelta(seconds=10)
         with pytest.raises(ValidationError):
             StageStatus(
-                name="s", state=StageState.completed, started_at=now, finished_at=earlier,
+                name="s",
+                state=StageState.completed,
+                started_at=now,
+                finished_at=earlier,
             )
 
     def test_naive_datetime_rejected(self) -> None:
         with pytest.raises(ValidationError):
             StageStatus(name="s", state=StageState.running, started_at=datetime(2024, 1, 1))
+
+    def test_skipped_no_timestamps_ok(self) -> None:
+        stage = StageStatus(name="s", state=StageState.skipped)
+        assert stage.started_at is None
+        assert stage.finished_at is None
+
+    def test_skipped_both_timestamps_ok(self) -> None:
+        now = _now()
+        later = now + timedelta(seconds=10)
+        stage = StageStatus(
+            name="s",
+            state=StageState.skipped,
+            started_at=now,
+            finished_at=later,
+        )
+        assert stage.started_at == now
+
+    def test_skipped_only_start_rejected(self) -> None:
+        with pytest.raises(ValidationError):
+            StageStatus(name="s", state=StageState.skipped, started_at=_now())
 
 
 # ---------------------------------------------------------------------------
@@ -143,14 +171,20 @@ class TestAnalysisStatusCoherence:
         later = now + timedelta(seconds=10)
         with pytest.raises(ValidationError):
             AnalysisStatus(
-                run_id="r", tool_name="t", state=AnalysisState.running,
-                started_at=now, finished_at=later,
+                run_id="r",
+                tool_name="t",
+                state=AnalysisState.running,
+                started_at=now,
+                finished_at=later,
             )
 
     def test_completed_requires_timestamps(self) -> None:
         with pytest.raises(ValidationError):
             AnalysisStatus(
-                run_id="r", tool_name="t", state=AnalysisState.completed, started_at=_now(),
+                run_id="r",
+                tool_name="t",
+                state=AnalysisState.completed,
+                started_at=_now(),
             )
 
     def test_completed_rejects_error(self) -> None:
@@ -158,8 +192,11 @@ class TestAnalysisStatusCoherence:
         later = now + timedelta(seconds=10)
         with pytest.raises(ValidationError):
             AnalysisStatus(
-                run_id="r", tool_name="t", state=AnalysisState.completed,
-                started_at=now, finished_at=later,
+                run_id="r",
+                tool_name="t",
+                state=AnalysisState.completed,
+                started_at=now,
+                finished_at=later,
                 error=ArcadiaErrorInfo(code="e", message="f"),
             )
 
@@ -168,8 +205,11 @@ class TestAnalysisStatusCoherence:
         later = now + timedelta(seconds=10)
         with pytest.raises(ValidationError):
             AnalysisStatus(
-                run_id="r", tool_name="t", state=AnalysisState.failed,
-                started_at=now, finished_at=later,
+                run_id="r",
+                tool_name="t",
+                state=AnalysisState.failed,
+                started_at=now,
+                finished_at=later,
             )
 
     def test_empty_run_id_rejected(self) -> None:
@@ -179,6 +219,49 @@ class TestAnalysisStatusCoherence:
     def test_empty_tool_name_rejected(self) -> None:
         with pytest.raises(ValidationError):
             AnalysisStatus(run_id="r", tool_name="", state=AnalysisState.pending)
+
+    def test_pending_rejects_current_stage(self) -> None:
+        with pytest.raises(ValidationError):
+            AnalysisStatus(
+                run_id="r",
+                tool_name="t",
+                state=AnalysisState.pending,
+                current_stage="stage1",
+            )
+
+    def test_completed_rejects_current_stage(self) -> None:
+        now = _now()
+        later = now + timedelta(seconds=10)
+        with pytest.raises(ValidationError):
+            AnalysisStatus(
+                run_id="r",
+                tool_name="t",
+                state=AnalysisState.completed,
+                started_at=now,
+                finished_at=later,
+                current_stage="stage1",
+            )
+
+    def test_current_stage_must_match_listed_stage(self) -> None:
+        now = _now()
+        with pytest.raises(ValidationError):
+            AnalysisStatus(
+                run_id="r",
+                tool_name="t",
+                state=AnalysisState.running,
+                started_at=now,
+                current_stage="nonexistent",
+            )
+
+    def test_duplicate_stage_names_rejected(self) -> None:
+        stage = StageStatus(name="dup", state=StageState.pending)
+        with pytest.raises(ValidationError):
+            AnalysisStatus(
+                run_id="r",
+                tool_name="t",
+                state=AnalysisState.pending,
+                stages=(stage, stage),
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -217,17 +300,24 @@ class TestArtifactRecord:
     def test_empty_id_rejected(self) -> None:
         with pytest.raises(ValidationError):
             ArtifactRecord(
-                artifact_id="", name="out", relative_path="out",
-                media_type="text", visibility=ArtifactVisibility.internal,
+                artifact_id="",
+                name="out",
+                relative_path="out",
+                media_type="text",
+                visibility=ArtifactVisibility.internal,
                 created_at=_now(),
             )
 
     def test_metadata_defensively_copied(self) -> None:
         original = {"key": "value"}
         record = ArtifactRecord(
-            artifact_id="art-1", name="out", relative_path="out",
-            media_type="text", visibility=ArtifactVisibility.internal,
-            created_at=_now(), metadata=original,
+            artifact_id="art-1",
+            name="out",
+            relative_path="out",
+            media_type="text",
+            visibility=ArtifactVisibility.internal,
+            created_at=_now(),
+            metadata=original,
         )
         record.metadata["key"] = "changed"
         assert original == {"key": "value"}
@@ -235,7 +325,10 @@ class TestArtifactRecord:
     def test_naive_datetime_rejected(self) -> None:
         with pytest.raises(ValidationError):
             ArtifactRecord(
-                artifact_id="art-1", name="out", relative_path="out",
-                media_type="text", visibility=ArtifactVisibility.internal,
+                artifact_id="art-1",
+                name="out",
+                relative_path="out",
+                media_type="text",
+                visibility=ArtifactVisibility.internal,
                 created_at=datetime(2024, 1, 1),
             )

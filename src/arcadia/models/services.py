@@ -11,17 +11,18 @@ inference libraries.
 from __future__ import annotations
 
 import ipaddress
-from datetime import datetime, timezone
-from enum import Enum
-from typing import Any, Literal, Union
+from datetime import datetime
+from enum import StrEnum
+from typing import Any, Literal
 
 from pydantic import field_validator, model_validator
 
 from arcadia.models.common import (
+    HuggingFaceFileSpec,
     ModelBase,
     RequestedRuntimeSettings,
     ResolvedRuntimeSettings,
-    HuggingFaceFileSpec,
+    _normalize_datetime,
     _validate_host,
     _validate_port,
 )
@@ -41,7 +42,7 @@ __all__ = [
 ]
 
 
-class ServiceType(str, Enum):
+class ServiceType(StrEnum):
     """Kinds of inference services."""
 
     LLM = "llm"
@@ -49,7 +50,7 @@ class ServiceType(str, Enum):
     SAM3 = "sam3"
 
 
-class ServiceState(str, Enum):
+class ServiceState(StrEnum):
     """Lifecycle state of a single service instance."""
 
     stopped = "stopped"
@@ -61,7 +62,7 @@ class ServiceState(str, Enum):
     stopping = "stopping"
 
 
-class OperationState(str, Enum):
+class OperationState(StrEnum):
     """State of a long-running operation."""
 
     pending = "pending"
@@ -90,7 +91,7 @@ class LlamaServiceSpec(ModelBase):
         return _validate_port(value)
 
     @model_validator(mode="after")
-    def _validate_projector_rules(self) -> "LlamaServiceSpec":
+    def _validate_projector_rules(self) -> LlamaServiceSpec:
         is_visual = self.service_type == ServiceType.VISUAL_LLM
         if is_visual and self.projector is None:
             raise ValueError("visual_llm service requires a projector")
@@ -127,7 +128,7 @@ class SamServiceSpec(ModelBase):
         return stripped
 
 
-ServiceSpec = Union[LlamaServiceSpec, SamServiceSpec]
+ServiceSpec = LlamaServiceSpec | SamServiceSpec
 
 
 def parse_service_spec(data: Any) -> ServiceSpec:
@@ -148,7 +149,7 @@ def _parse_service_spec(data: dict[str, Any]) -> ServiceSpec:
     try:
         service_type = ServiceType(service_type_raw)
     except ValueError:
-        raise ValueError(f"unknown service_type: {service_type_raw}")
+        raise ValueError(f"unknown service_type: {service_type_raw}") from None
 
     if service_type == ServiceType.SAM3:
         return SamServiceSpec(**data)
@@ -196,20 +197,6 @@ class ServiceEndpoint(ModelBase):
 # ---------------------------------------------------------------------------
 
 
-def _normalize_datetime(value: Any) -> datetime | None:
-    """Validate and normalize a timestamp to UTC. Naive datetimes are rejected."""
-    if value is None:
-        return None
-    if isinstance(value, str):
-        # Parse ISO 8601 strings from JSON round trips
-        value = datetime.fromisoformat(value.replace("Z", "+00:00"))
-    if not isinstance(value, datetime):
-        raise ValueError("timestamp must be a datetime")
-    if value.tzinfo is None:
-        raise ValueError("naive datetime is not allowed; use a timezone-aware datetime")
-    return value.astimezone(timezone.utc)
-
-
 class ServiceStatus(ModelBase):
     """Status of a single service instance on a compute node."""
 
@@ -247,19 +234,32 @@ class ServiceStatus(ModelBase):
         return _normalize_datetime(value)
 
     @model_validator(mode="after")
-    def _validate_coherence(self) -> "ServiceStatus":
+    def _validate_coherence(self) -> ServiceStatus:
         state = self.state
         if state == ServiceState.ready:
             if self.endpoint is None:
                 raise ValueError("ready state requires an endpoint")
             if self.resolved_settings is None:
                 raise ValueError("ready state requires resolved settings")
+            if self.error is not None:
+                raise ValueError("ready state must not have an error")
         if state == ServiceState.failed:
             if self.error is None:
                 raise ValueError("failed state requires an error")
         if state == ServiceState.stopped:
             if self.endpoint is not None:
                 raise ValueError("stopped state must not expose an endpoint")
+        # Cross-field consistency: endpoint, spec, and status must agree on port and service_type
+        if self.endpoint is not None:
+            if self.endpoint.port != self.port:
+                raise ValueError("endpoint port must match status port")
+            if self.endpoint.service_type != self.service_type:
+                raise ValueError("endpoint service_type must match status service_type")
+        if self.requested_spec is not None:
+            if self.requested_spec.port != self.port:
+                raise ValueError("requested_spec port must match status port")
+            if self.requested_spec.service_type != self.service_type:
+                raise ValueError("requested_spec service_type must match status service_type")
         if self.started_at is not None and self.updated_at is not None:
             if self.started_at > self.updated_at:
                 raise ValueError("started_at cannot be after updated_at")
@@ -320,7 +320,7 @@ class OperationStatus(ModelBase):
         return _normalize_datetime(value)
 
     @model_validator(mode="after")
-    def _validate_state_timestamps(self) -> "OperationStatus":
+    def _validate_state_timestamps(self) -> OperationStatus:
         state = self.state
         if state == OperationState.pending:
             if self.started_at is not None or self.finished_at is not None:

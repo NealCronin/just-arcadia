@@ -10,7 +10,7 @@ inference libraries.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any
 
 from pydantic import Field, field_validator
@@ -18,21 +18,14 @@ from pydantic import Field, field_validator
 from arcadia.models.common import (
     ArtifactVisibility,
     ModelBase,
+    _normalize_datetime,
     _validate_json_mapping,
+    _validate_non_empty_str,
 )
 
 __all__ = [
     "ArtifactRecord",
 ]
-
-
-def _validate_non_empty_str(value: Any, field_name: str) -> str:
-    if not isinstance(value, str):
-        raise ValueError(f"{field_name} must be a string")
-    stripped = value.strip()
-    if not stripped:
-        raise ValueError(f"{field_name} must not be empty")
-    return stripped
 
 
 class ArtifactRecord(ModelBase):
@@ -63,7 +56,7 @@ class ArtifactRecord(ModelBase):
         if not stripped:
             raise ValueError("relative_path must not be empty")
         # Reject null bytes and control characters
-        controls = "".join(chr(i) for i in range(0, 0x20)) + "\x7F"
+        controls = "".join(chr(i) for i in range(0, 0x20)) + "\x7f"
         if "\x00" in stripped or any(c in stripped for c in controls):
             raise ValueError("relative_path contains control characters")
         # Reject backslashes — paths must use POSIX separators
@@ -89,17 +82,12 @@ class ArtifactRecord(ModelBase):
     @field_validator("created_at", mode="before")
     @classmethod
     def _validate_created_at(cls, value: Any) -> datetime:
-        if isinstance(value, str):
-            # Parse ISO 8601 strings from JSON round trips
-            value = datetime.fromisoformat(value.replace("Z", "+00:00"))
-        if not isinstance(value, datetime):
-            raise ValueError("created_at must be a datetime")
-        if value.tzinfo is None:
-            raise ValueError("naive datetime is not allowed; use a timezone-aware datetime")
-        return value.astimezone(timezone.utc)
+        result = _normalize_datetime(value)
+        if result is None:
+            raise ValueError("created_at is required")
+        return result
 
     @field_validator("metadata", mode="before")
     @classmethod
     def _validate_metadata(cls, value: Any) -> Any:
         return _validate_json_mapping(value)
-

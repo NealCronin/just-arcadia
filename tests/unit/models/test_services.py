@@ -4,7 +4,7 @@ Covers service spec projector rules, parse_service_spec union dispatch,
 service/operation state coherence, and datetime normalization.
 """
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta, timezone
 
 import pytest
 from pydantic import ValidationError
@@ -28,7 +28,7 @@ from arcadia.models.services import (
 
 
 def _now() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 def _spec(st: ServiceType, with_projector: bool = False, port: int = 8000) -> LlamaServiceSpec:
@@ -85,9 +85,7 @@ class TestParseServiceSpec:
         assert spec.service_type == ServiceType.VISUAL_LLM
 
     def test_parse_sam(self) -> None:
-        spec = parse_service_spec(
-            {"service_type": "sam3", "port": 8002, "checkpoint_path": "/path/to/model.pt"}
-        )
+        spec = parse_service_spec({"service_type": "sam3", "port": 8002, "checkpoint_path": "/path/to/model.pt"})
         assert isinstance(spec, SamServiceSpec)
         assert spec.service_type == ServiceType.SAM3
 
@@ -131,32 +129,46 @@ class TestServiceStatusCoherence:
         # Missing endpoint
         with pytest.raises(ValidationError):
             ServiceStatus(
-                port=8000, service_type=ServiceType.LLM, state=ServiceState.ready,
-                resolved_settings=rs, updated_at=now,
+                port=8000,
+                service_type=ServiceType.LLM,
+                state=ServiceState.ready,
+                resolved_settings=rs,
+                updated_at=now,
             )
         # Missing resolved settings
         with pytest.raises(ValidationError):
             ServiceStatus(
-                port=8000, service_type=ServiceType.LLM, state=ServiceState.ready,
-                endpoint=ep, updated_at=now,
+                port=8000,
+                service_type=ServiceType.LLM,
+                state=ServiceState.ready,
+                endpoint=ep,
+                updated_at=now,
             )
         # Both present: OK
         ServiceStatus(
-            port=8000, service_type=ServiceType.LLM, state=ServiceState.ready,
-            endpoint=ep, resolved_settings=rs, updated_at=now,
+            port=8000,
+            service_type=ServiceType.LLM,
+            state=ServiceState.ready,
+            endpoint=ep,
+            resolved_settings=rs,
+            updated_at=now,
         )
 
     def test_failed_requires_error(self) -> None:
         with pytest.raises(ValidationError):
             ServiceStatus(
-                port=8000, service_type=ServiceType.LLM, state=ServiceState.failed,
+                port=8000,
+                service_type=ServiceType.LLM,
+                state=ServiceState.failed,
                 updated_at=_now(),
             )
 
     def test_stopped_rejects_endpoint(self) -> None:
         with pytest.raises(ValidationError):
             ServiceStatus(
-                port=8000, service_type=ServiceType.LLM, state=ServiceState.stopped,
+                port=8000,
+                service_type=ServiceType.LLM,
+                state=ServiceState.stopped,
                 endpoint=ServiceEndpoint(host="localhost", port=8000, service_type=ServiceType.LLM),
                 updated_at=_now(),
             )
@@ -166,43 +178,118 @@ class TestServiceStatusCoherence:
         later = now + timedelta(seconds=10)
         with pytest.raises(ValidationError):
             ServiceStatus(
-                port=8000, service_type=ServiceType.LLM, state=ServiceState.ready,
+                port=8000,
+                service_type=ServiceType.LLM,
+                state=ServiceState.ready,
                 endpoint=ServiceEndpoint(host="localhost", port=8000, service_type=ServiceType.LLM),
                 resolved_settings=ResolvedRuntimeSettings(backend="llama", values={}),
-                started_at=later, updated_at=now,
+                started_at=later,
+                updated_at=now,
             )
 
     def test_naive_datetime_rejected(self) -> None:
         with pytest.raises(ValidationError):
             ServiceStatus(
-                port=8000, service_type=ServiceType.LLM, state=ServiceState.stopped,
+                port=8000,
+                service_type=ServiceType.LLM,
+                state=ServiceState.stopped,
                 updated_at=datetime(2024, 1, 1),
             )
 
     def test_utc_normalization(self) -> None:
-        from datetime import timezone, timedelta
+        from datetime import timedelta
 
         tz = timezone(timedelta(hours=5))
         status = ServiceStatus(
-            port=8000, service_type=ServiceType.LLM, state=ServiceState.stopped,
+            port=8000,
+            service_type=ServiceType.LLM,
+            state=ServiceState.stopped,
             updated_at=datetime(2024, 1, 1, 12, 0, 0, tzinfo=tz),
         )
-        assert status.updated_at.tzinfo is timezone.utc
+        assert status.updated_at.tzinfo is UTC
         assert status.updated_at.hour == 7  # 12 - 5 = 7
+
+    def test_ready_rejects_error(self) -> None:
+        now = _now()
+        with pytest.raises(ValidationError):
+            ServiceStatus(
+                port=8000,
+                service_type=ServiceType.LLM,
+                state=ServiceState.ready,
+                endpoint=ServiceEndpoint(host="localhost", port=8000, service_type=ServiceType.LLM),
+                resolved_settings=ResolvedRuntimeSettings(backend="llama", values={}),
+                error=ArcadiaErrorInfo(code="err", message="fail"),
+                updated_at=now,
+            )
+
+    def test_endpoint_port_mismatch_rejected(self) -> None:
+        now = _now()
+        with pytest.raises(ValidationError):
+            ServiceStatus(
+                port=8000,
+                service_type=ServiceType.LLM,
+                state=ServiceState.stopped,
+                endpoint=ServiceEndpoint(host="localhost", port=8081, service_type=ServiceType.LLM),
+                updated_at=now,
+            )
+
+    def test_endpoint_service_type_mismatch_rejected(self) -> None:
+        now = _now()
+        with pytest.raises(ValidationError):
+            ServiceStatus(
+                port=8000,
+                service_type=ServiceType.LLM,
+                state=ServiceState.stopped,
+                endpoint=ServiceEndpoint(host="localhost", port=8000, service_type=ServiceType.SAM3),
+                updated_at=now,
+            )
+
+    def test_requested_spec_port_mismatch_rejected(self) -> None:
+        now = _now()
+        spec = LlamaServiceSpec(
+            service_type=ServiceType.LLM,
+            port=8081,
+            model=HuggingFaceFileSpec(repo_id="o/m", filename="model.gguf"),
+        )
+        with pytest.raises(ValidationError):
+            ServiceStatus(
+                port=8000,
+                service_type=ServiceType.LLM,
+                state=ServiceState.stopped,
+                requested_spec=spec,
+                updated_at=now,
+            )
+
+    def test_requested_spec_service_type_mismatch_rejected(self) -> None:
+        now = _now()
+        spec = SamServiceSpec(port=8000, checkpoint_path="/path/to/model.pt")
+        with pytest.raises(ValidationError):
+            ServiceStatus(
+                port=8000,
+                service_type=ServiceType.LLM,
+                state=ServiceState.stopped,
+                requested_spec=spec,
+                updated_at=now,
+            )
 
 
 class TestOperationStatusCoherence:
     def test_pending_no_timestamps(self) -> None:
         with pytest.raises(ValidationError):
             OperationStatus(
-                operation_id="op-1", port=8000, state=OperationState.pending,
-                started_at=_now(), updated_at=_now(),
+                operation_id="op-1",
+                port=8000,
+                state=OperationState.pending,
+                started_at=_now(),
+                updated_at=_now(),
             )
 
     def test_running_requires_start(self) -> None:
         with pytest.raises(ValidationError):
             OperationStatus(
-                operation_id="op-1", port=8000, state=OperationState.running,
+                operation_id="op-1",
+                port=8000,
+                state=OperationState.running,
                 updated_at=_now(),
             )
 
@@ -211,8 +298,12 @@ class TestOperationStatusCoherence:
         later = now + timedelta(seconds=10)
         with pytest.raises(ValidationError):
             OperationStatus(
-                operation_id="op-1", port=8000, state=OperationState.failed,
-                started_at=now, updated_at=later, finished_at=later,
+                operation_id="op-1",
+                port=8000,
+                state=OperationState.failed,
+                started_at=now,
+                updated_at=later,
+                finished_at=later,
             )
 
     def test_succeeded_rejects_error(self) -> None:
@@ -220,8 +311,12 @@ class TestOperationStatusCoherence:
         later = now + timedelta(seconds=10)
         with pytest.raises(ValidationError):
             OperationStatus(
-                operation_id="op-1", port=8000, state=OperationState.succeeded,
-                started_at=now, updated_at=later, finished_at=later,
+                operation_id="op-1",
+                port=8000,
+                state=OperationState.succeeded,
+                started_at=now,
+                updated_at=later,
+                finished_at=later,
                 error=ArcadiaErrorInfo(code="err", message="fail"),
             )
 
@@ -229,21 +324,28 @@ class TestOperationStatusCoherence:
     def test_progress_out_of_range(self, progress: object) -> None:
         with pytest.raises(ValidationError):
             OperationStatus(
-                operation_id="op-1", port=8000, state=OperationState.running,
+                operation_id="op-1",
+                port=8000,
+                state=OperationState.running,
                 progress=progress,  # type: ignore[arg-type]
-                started_at=_now(), updated_at=_now(),
+                started_at=_now(),
+                updated_at=_now(),
             )
 
     def test_empty_operation_id_rejected(self) -> None:
         with pytest.raises(ValidationError):
             OperationStatus(
-                operation_id="", port=8000, state=OperationState.pending,
+                operation_id="",
+                port=8000,
+                state=OperationState.pending,
                 updated_at=_now(),
             )
 
     def test_bool_port_rejected(self) -> None:
         with pytest.raises(ValidationError):
             OperationStatus(
-                operation_id="op-1", port=True, state=OperationState.pending,
+                operation_id="op-1",
+                port=True,
+                state=OperationState.pending,
                 updated_at=_now(),
             )

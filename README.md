@@ -4,7 +4,7 @@ ARCADIA is being rebuilt as a headless Python package for running fixed-sequence
 research pipelines that depend on local or remote model inference.
 
 The repository currently contains the completed Session 0 scaffold and the
-planned Session 1 domain-model work order. No inference, service lifecycle,
+completed Session 1 domain-models layer. No inference, service lifecycle,
 transport, pipeline, storage, or UI functionality is implemented yet.
 
 ## Legacy implementation
@@ -27,11 +27,9 @@ Project-wide documentation lives in [`docs/`](docs/):
 - [`docs/decisions/`](docs/decisions/) — architecture decision records
 - [`docs/sessions/`](docs/sessions/) — one canonical work-order and completion file per development session
 
-The current implementation session is:
-
-- [`docs/sessions/01-domain-models-and-errors.md`](docs/sessions/01-domain-models-and-errors.md)
-
-See [`docs/sessions/README.md`](docs/sessions/README.md) for the session workflow.
+The current implementation session is Session 02 (Configuration). See the
+[`docs/sessions/README.md`](docs/sessions/README.md) session index and the
+Session 01 completion record for completed work.
 
 ## Development environment
 

@@ -11,11 +11,12 @@ inference libraries.
 
 from __future__ import annotations
 
+import copy
 from typing import Any
 
 from pydantic import field_validator
 
-from arcadia.models.common import ModelBase, JsonValue, _validate_json_mapping
+from arcadia.models.common import ModelBase, _validate_json_mapping
 
 __all__ = [
     "ArcadiaErrorInfo",
@@ -104,9 +105,7 @@ class ArcadiaError(Exception):
             raise ValueError("message must not be empty")
 
         self._message: str = message
-        code_str: str = (
-            code.strip() if isinstance(code, str) and code.strip() else ""
-        )
+        code_str: str = code.strip() if isinstance(code, str) and code.strip() else ""
         self._code: str = code_str or self._default_code
         self._retryable: bool = bool(retryable) if retryable is not None else self._default_retryable
         self._cause: BaseException | Any | None = cause
@@ -130,8 +129,9 @@ class ArcadiaError(Exception):
 
     @property
     def details(self) -> dict[str, Any]:
-        # Return a copy so callers cannot mutate the internal state.
-        return dict(self._details)
+        # Return a deep copy so nested mutable values cannot mutate
+        # the internal error details.
+        return copy.deepcopy(self._details)
 
     @property
     def cause(self) -> BaseException | Any | None:

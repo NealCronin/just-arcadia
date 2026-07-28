@@ -10,13 +10,18 @@ inference libraries.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from enum import Enum
+from datetime import datetime
+from enum import StrEnum
 from typing import Any
 
 from pydantic import field_validator, model_validator
 
-from arcadia.models.common import ModelBase, _validate_json_mapping
+from arcadia.models.common import (
+    ModelBase,
+    _normalize_datetime,
+    _validate_json_mapping,
+    _validate_non_empty_str,
+)
 from arcadia.models.errors import ArcadiaErrorInfo
 
 __all__ = [
@@ -28,34 +33,7 @@ __all__ = [
 ]
 
 
-def _validate_non_empty_str(value: Any, field_name: str) -> str:
-    if not isinstance(value, str):
-        raise ValueError(f"{field_name} must be a string")
-    stripped = value.strip()
-    if not stripped:
-        raise ValueError(f"{field_name} must not be empty")
-    return stripped
-
-
-def _normalize_datetime(value: Any) -> datetime | None:
-    """Validate and normalize a timestamp to UTC.
-
-    Naive datetimes are rejected. Timezone-aware datetimes are converted to UTC.
-    Returns ``None`` when ``value`` is ``None``.
-    """
-    if value is None:
-        return None
-    if isinstance(value, str):
-        # Parse ISO 8601 strings from JSON round trips
-        value = datetime.fromisoformat(value.replace("Z", "+00:00"))
-    if not isinstance(value, datetime):
-        raise ValueError("timestamp must be a datetime")
-    if value.tzinfo is None:
-        raise ValueError("naive datetime is not allowed; use a timezone-aware datetime")
-    return value.astimezone(timezone.utc)
-
-
-class AnalysisState(str, Enum):
+class AnalysisState(StrEnum):
     """Top-level state of an analysis run."""
 
     pending = "pending"
@@ -65,7 +43,7 @@ class AnalysisState(str, Enum):
     failed = "failed"
 
 
-class StageState(str, Enum):
+class StageState(StrEnum):
     """State of an individual stage within an analysis."""
 
     pending = "pending"
@@ -126,7 +104,7 @@ class StageStatus(ModelBase):
         return _normalize_datetime(value)
 
     @model_validator(mode="after")
-    def _validate_state_timestamps(self) -> "StageStatus":
+    def _validate_state_timestamps(self) -> StageStatus:
         state = self.state
         if state == StageState.pending:
             if self.started_at is not None or self.finished_at is not None:
@@ -136,9 +114,12 @@ class StageStatus(ModelBase):
                 raise ValueError("running stage must have a start time")
             if self.finished_at is not None:
                 raise ValueError("running stage must not have a finish time")
-        if state in (StageState.completed, StageState.failed, StageState.skipped):
+        if state in (StageState.completed, StageState.failed):
             if self.started_at is None or self.finished_at is None:
                 raise ValueError("terminal stage must have start and finish times")
+        if state == StageState.skipped:
+            if (self.started_at is None) != (self.finished_at is None):
+                raise ValueError("skipped stage must have either no timestamps or both")
         if state == StageState.failed and self.error is None:
             raise ValueError("failed stage must have an error")
         if state == StageState.completed and self.error is not None:
@@ -174,11 +155,13 @@ class AnalysisStatus(ModelBase):
         return _normalize_datetime(value)
 
     @model_validator(mode="after")
-    def _validate_state_timestamps(self) -> "AnalysisStatus":
+    def _validate_state_timestamps(self) -> AnalysisStatus:
         state = self.state
         if state == AnalysisState.pending:
             if self.started_at is not None or self.finished_at is not None:
                 raise ValueError("pending analysis must not have start or finish timestamps")
+            if self.current_stage is not None:
+                raise ValueError("pending analysis must not have a current stage")
         if state in (AnalysisState.preparing, AnalysisState.running):
             if self.started_at is None:
                 raise ValueError(f"{state.value} analysis must have a start time")
@@ -187,10 +170,20 @@ class AnalysisStatus(ModelBase):
         if state in (AnalysisState.completed, AnalysisState.failed):
             if self.started_at is None or self.finished_at is None:
                 raise ValueError("completed/failed analysis must have start and finish times")
+            if self.current_stage is not None:
+                raise ValueError("completed/failed analysis must not have a current stage")
         if state == AnalysisState.failed and self.error is None:
             raise ValueError("failed analysis must have an error")
         if state == AnalysisState.completed and self.error is not None:
             raise ValueError("completed analysis must not have an error")
+        # Stage name uniqueness
+        stage_names = [s.name for s in self.stages]
+        if len(stage_names) != len(set(stage_names)):
+            raise ValueError("stage names must be unique")
+        # current_stage must reference an existing stage
+        if self.current_stage is not None:
+            if self.current_stage not in stage_names:
+                raise ValueError("current_stage must match a listed stage name")
         if self.started_at is not None and self.finished_at is not None:
             if self.started_at > self.finished_at:
                 raise ValueError("started_at cannot be after finished_at")

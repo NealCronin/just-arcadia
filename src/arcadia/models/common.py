@@ -9,7 +9,8 @@ from __future__ import annotations
 import ipaddress
 import math
 import re
-from enum import Enum
+from datetime import UTC, datetime
+from enum import StrEnum
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -32,7 +33,7 @@ JsonValue = Any
 # JSON validation helpers
 # ---------------------------------------------------------------------------
 
-_HOST_CONTROLS = "".join(chr(i) for i in range(0, 0x20)) + "\x7F"
+_HOST_CONTROLS = "".join(chr(i) for i in range(0, 0x20)) + "\x7f"
 
 
 def _is_json_value(value: Any) -> bool:
@@ -80,6 +81,34 @@ def _validate_json_mapping(value: Any) -> Any:
     return {str(k): _deep_copy_json(v) for k, v in value.items()}
 
 
+def _normalize_datetime(value: Any) -> datetime | None:
+    """Validate a timestamp and normalize to UTC.
+
+    ``None`` passes through. Naive datetimes are rejected. Timezone-aware
+    datetimes are converted to UTC. ISO 8601 strings (from JSON round trips)
+    are parsed before validation.
+    """
+    if value is None:
+        return None
+    if isinstance(value, str):
+        value = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    if not isinstance(value, datetime):
+        raise ValueError("timestamp must be a datetime")
+    if value.tzinfo is None:
+        raise ValueError("naive datetime is not allowed; use a timezone-aware datetime")
+    return value.astimezone(UTC)
+
+
+def _validate_non_empty_str(value: Any, field_name: str) -> str:
+    """Validate that a value is a non-empty string after trimming."""
+    if not isinstance(value, str):
+        raise ValueError(f"{field_name} must be a string")
+    stripped = value.strip()
+    if not stripped:
+        raise ValueError(f"{field_name} must not be empty")
+    return stripped
+
+
 # ---------------------------------------------------------------------------
 # Shared model base
 # ---------------------------------------------------------------------------
@@ -88,9 +117,11 @@ def _validate_json_mapping(value: Any) -> Any:
 class ModelBase(BaseModel):
     """Shared base for arcadia.models using Pydantic 2.
 
-    Concrete models inherit this config: extra fields are rejected, models
-    are frozen (hashable when all fields are hashable), and defaults are
-    validated.
+    Concrete models inherit this config: extra fields are rejected,
+    attribute assignment is blocked (frozen=True), and defaults are
+    validated. Nested mutable values (dicts, lists) are not automatically
+    deep-frozen; callers must not share mutable mapping objects between an
+    active run and editable configuration.
     """
 
     model_config = ConfigDict(
@@ -300,7 +331,7 @@ class ResolvedRuntimeSettings(ModelBase):
 # ---------------------------------------------------------------------------
 
 
-class ArtifactVisibility(str, Enum):
+class ArtifactVisibility(StrEnum):
     """Visibility of a recorded artifact."""
 
     final = "final"

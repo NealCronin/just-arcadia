@@ -20,8 +20,8 @@ Do not create separate session prompts, design documents, handoff templates, or 
 | Session | Module | Status |
 |---|---|---|
 | 00 | Project scaffold | Completed |
-| 01 | Domain models and errors | Planned |
-| 02 | Configuration | Not planned |
+| 01 | Domain models and errors | Completed |
+| 02 | Configuration | Planned |
 
 ## Session lifecycle
 

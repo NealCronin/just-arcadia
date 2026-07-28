@@ -8,8 +8,8 @@ Importing :mod:`arcadia` does not eagerly import this module.
 
 from arcadia.models.analysis import (
     AnalysisSpec,
-    AnalysisStatus,
     AnalysisState,
+    AnalysisStatus,
     StageState,
     StageStatus,
 )
@@ -18,8 +18,8 @@ from arcadia.models.common import (
     ArtifactVisibility,
     HuggingFaceFileSpec,
     NodeAddress,
-    ResolvedRuntimeSettings,
     RequestedRuntimeSettings,
+    ResolvedRuntimeSettings,
 )
 from arcadia.models.errors import (
     AnalysisError,

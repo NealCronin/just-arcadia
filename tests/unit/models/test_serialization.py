@@ -4,7 +4,7 @@ Each major model family must survive model_dump(mode="json") followed by
 model_validate(...) with equivalent values.
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 
@@ -20,8 +20,8 @@ from arcadia.models.common import (
     ArtifactVisibility,
     HuggingFaceFileSpec,
     NodeAddress,
-    ResolvedRuntimeSettings,
     RequestedRuntimeSettings,
+    ResolvedRuntimeSettings,
 )
 from arcadia.models.errors import ArcadiaErrorInfo
 from arcadia.models.services import (
@@ -35,7 +35,7 @@ from arcadia.models.services import (
 
 
 def _now() -> datetime:
-    return datetime(2024, 6, 15, 12, 0, 0, tzinfo=timezone.utc)
+    return datetime(2024, 6, 15, 12, 0, 0, tzinfo=UTC)
 
 
 class TestSerialization:
@@ -86,7 +86,9 @@ class TestSerialization:
 
     def test_service_status(self) -> None:
         status = ServiceStatus(
-            port=8000, service_type=ServiceType.LLM, state=ServiceState.stopped,
+            port=8000,
+            service_type=ServiceType.LLM,
+            state=ServiceState.stopped,
             updated_at=_now(),
         )
         restored = ServiceStatus.model_validate(status.model_dump(mode="json"))
@@ -107,8 +109,11 @@ class TestSerialization:
 
     def test_analysis_status(self) -> None:
         status = AnalysisStatus(
-            run_id="run-1", tool_name="tool", state=AnalysisState.completed,
-            started_at=_now(), finished_at=_now(),
+            run_id="run-1",
+            tool_name="tool",
+            state=AnalysisState.completed,
+            started_at=_now(),
+            finished_at=_now(),
         )
         restored = AnalysisStatus.model_validate(status.model_dump(mode="json"))
         assert restored.run_id == status.run_id
@@ -116,9 +121,13 @@ class TestSerialization:
 
     def test_artifact_record(self) -> None:
         record = ArtifactRecord(
-            artifact_id="art-1", name="out.json", relative_path="results/out.json",
-            media_type="application/json", visibility=ArtifactVisibility.final,
-            created_at=_now(), metadata={"k": "v"},
+            artifact_id="art-1",
+            name="out.json",
+            relative_path="results/out.json",
+            media_type="application/json",
+            visibility=ArtifactVisibility.final,
+            created_at=_now(),
+            metadata={"k": "v"},
         )
         restored = ArtifactRecord.model_validate(record.model_dump(mode="json"))
         assert restored.artifact_id == record.artifact_id
@@ -137,8 +146,16 @@ class TestSerialization:
         [
             (NodeAddress, {"host": "::1", "instruction_port": 8000}),
             (HuggingFaceFileSpec, {"repo_id": "o/m", "filename": "model.gguf"}),
-            (AnalysisStatus, {"run_id": "r", "tool_name": "t", "state": "completed",
-                              "started_at": "2024-06-15T12:00:00Z", "finished_at": "2024-06-15T12:00:00Z"}),
+            (
+                AnalysisStatus,
+                {
+                    "run_id": "r",
+                    "tool_name": "t",
+                    "state": "completed",
+                    "started_at": "2024-06-15T12:00:00Z",
+                    "finished_at": "2024-06-15T12:00:00Z",
+                },
+            ),
         ],
     )
     def test_round_trip_equivalence(self, cls: type, kwargs: dict) -> None:

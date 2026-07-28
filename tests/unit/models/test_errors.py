@@ -23,7 +23,6 @@ from arcadia.models.errors import (
     ServiceStartupError,
 )
 
-
 ERROR_TABLE = [
     (ConfigurationError, "configuration_error", False),
     (ServiceError, "service_error", False),
@@ -124,6 +123,12 @@ class TestDetails:
         d = err.details
         d["key"] = "changed"
         assert err.details == {"key": "value"}
+
+    def test_details_deep_copied_nested(self) -> None:
+        err = ArcadiaError("boom", details={"nested": [1, 2, 3]})
+        d = err.details
+        d["nested"].append(4)
+        assert err.details == {"nested": [1, 2, 3]}
 
 
 class TestArcadiaErrorInfo:

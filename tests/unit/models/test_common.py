@@ -11,8 +11,8 @@ from arcadia.models.common import (
     ArtifactVisibility,
     HuggingFaceFileSpec,
     NodeAddress,
-    ResolvedRuntimeSettings,
     RequestedRuntimeSettings,
+    ResolvedRuntimeSettings,
 )
 
 
@@ -74,15 +74,11 @@ class TestHuggingFaceFileSpec:
     @pytest.mark.parametrize("revision", ["", ".", ".."])
     def test_invalid_revision(self, revision: str) -> None:
         with pytest.raises(ValidationError):
-            HuggingFaceFileSpec(
-                repo_id="owner/repo", filename="model.gguf", revision=revision
-            )
+            HuggingFaceFileSpec(repo_id="owner/repo", filename="model.gguf", revision=revision)
 
     def test_unknown_field_rejected(self) -> None:
         with pytest.raises(ValidationError):
-            HuggingFaceFileSpec(
-                repo_id="owner/repo", filename="model.gguf", extra="nope"
-            )
+            HuggingFaceFileSpec(repo_id="owner/repo", filename="model.gguf", extra="nope")
 
 
 class TestRuntimeSettings:
@@ -117,9 +113,7 @@ class TestRuntimeSettings:
             ResolvedRuntimeSettings(backend="", values={}, notes=())
 
     def test_resolved_settings_valid(self) -> None:
-        settings = ResolvedRuntimeSettings(
-            backend="llama.cpp", values={"threads": 4}, notes=("auto",)
-        )
+        settings = ResolvedRuntimeSettings(backend="llama.cpp", values={"threads": 4}, notes=("auto",))
         assert settings.backend == "llama.cpp"
         assert settings.notes == ("auto",)
 
