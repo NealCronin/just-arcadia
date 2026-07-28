@@ -66,3 +66,12 @@ def test_no_future_implementation_packages() -> None:
     for name in ("arcadia.services", "arcadia.analysis", "arcadia.tools"):
         with pytest.raises(ImportError, match=f"No module named '{name}'"):
             __import__(name)
+
+
+def test_package_versions_match() -> None:
+    """The code-level __version__ must match the installed package metadata."""
+    from importlib.metadata import version as get_version
+
+    import arcadia
+
+    assert arcadia.__version__ == get_version("arcadia-core")

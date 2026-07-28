@@ -46,6 +46,8 @@ CLI and future UI wrappers
 ```
 
 A module may directly depend only on modules shown above it in this diagram.
+For example, services may import models, events, hardware, and configuration;
+models may not import services.
 
 A module must not import modules shown below it.
 
