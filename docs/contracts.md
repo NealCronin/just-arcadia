@@ -45,7 +45,13 @@ analysis engine
 CLI and future UI wrappers
 ```
 
-Dependencies may point upward in this diagram only through explicit protocols defined in a lower or neutral layer.
+A module may directly depend only on modules shown above it in this diagram.
+
+A module must not import modules shown below it.
+
+When a lower-level module needs behavior supplied by a higher-level module,
+the lower-level or neutral layer must define a protocol that is provided
+through dependency injection.
 
 ### Prohibited dependencies
 

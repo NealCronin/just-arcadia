@@ -63,24 +63,19 @@ jobs:
           python-version: "3.11"
           cache: "pip"
 
-      - name: Upgrade pip
-        run: python -m pip install --upgrade pip
-
-      - name: Install build tools
-        run: python -m pip install build
-
       - name: Build wheel
-        run: python -m build --wheel --no-isolation
+        run: python -m build --wheel
 
       - name: Create clean virtual environment
-        run: |
-          python -m venv /tmp/arcadia-test-venv
-          /tmp/arcadia-test-venv/bin/python -m pip install --upgrade pip
+        run: python -m venv .wheel-test-venv
 
-      - name: Install only the wheel
+      - name: Install wheel in clean environment
+        shell: bash
         run: |
-          python -m pip install dist/*.whl --target /tmp/arcadia-wheel-test
+          .wheel-test-venv/bin/python -m pip install --upgrade pip
+          .wheel-test-venv/bin/python -m pip install dist/*.whl
 
-      - name: Verify import in clean environment
+      - name: Verify clean import
+        shell: bash
         run: |
-          PYTHONPATH=/tmp/arcadia-wheel-test python -c "import arcadia; print(arcadia.__version__)"
+          .wheel-test-venv/bin/python -c "import arcadia; print(arcadia.__version__)"

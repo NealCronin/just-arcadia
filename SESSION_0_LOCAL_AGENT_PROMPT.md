@@ -204,7 +204,7 @@ Write a concise README that explains:
 
 - ARCADIA is being rebuilt as a headless research orchestration package;
 - the current branch contains scaffold and architecture only;
-- the legacy UI is preserved in `legacy-ui-0.6.12` when that tag exists;
+- the legacy implementation is available externally at `NealCronin/Almost-ARCADIA`, not stored in this repository;
 - how to create a development environment;
 - how to run checks;
 - where architecture and session documents live.

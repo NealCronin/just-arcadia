@@ -8,7 +8,7 @@ version = "0.1.0"
 description = "ARCADIA: headless research orchestration for fixed-sequence ML pipelines"
 readme = "README.md"
 requires-python = ">=3.11"
-license = "Proprietary"
+
 authors = [
     { name = "ARCADIA" },
 ]
@@ -37,8 +37,8 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/arcadia/arcadia"
-Documentation = "https://github.com/arcadia/arcadia/tree/main/docs"
+Homepage = "https://github.com/NealCronin/just-arcadia"
+Documentation = "https://github.com/NealCronin/just-arcadia/tree/headless-core/docs"
 
 [tool.setuptools.packages.find]
 where = ["src"]

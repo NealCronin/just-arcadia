@@ -2,7 +2,11 @@
 
 ## 1. Purpose
 
-Almost ARCADIA 0.6.12 is the behavioral reference for the headless rewrite. It should be preserved in Git history or a tag, but its packages should not be imported by the new `arcadia` core.
+Almost ARCADIA 0.6.12 is the behavioral reference for the headless rewrite. It is
+available as a read-only reference at
+[NealCronin/Almost-ARCADIA](https://github.com/NealCronin/Almost-ARCADIA)
+or at a local reference path supplied by the operator. It is not imported by
+the new `arcadia` core and is not included in this repository.
 
 The inspected archive contains substantial working behavior and a useful test baseline. The goal is selective extraction, not a line-for-line port.
 

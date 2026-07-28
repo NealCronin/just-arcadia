@@ -55,7 +55,7 @@ def test_no_heavy_imports() -> None:
         timeout=60,
     )
     assert result.returncode == 0, f"subprocess failed: {result.stderr}"
-    assert "[]" in result.stdout, f"heavy modules were imported: {result.stdout}"
+    assert result.stdout.strip() == "[]", f"heavy modules were imported: {result.stdout}"
 
 
 def test_no_future_implementation_packages() -> None:

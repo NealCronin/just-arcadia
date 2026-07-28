@@ -33,7 +33,7 @@ htmlcov/
 # Build
 *.manifest
 *.spec
-*.lock
+!uv.lock
 
 # IDE / Editor
 .vscode/

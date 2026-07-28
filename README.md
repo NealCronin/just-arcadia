@@ -8,11 +8,15 @@ metadata, continuous integration, and the minimal installable `arcadia` package.
 No domain functionality (inference, service lifecycle, transport, pipeline,
 storage, or UI) is implemented yet.
 
-## Legacy versions
+## Legacy implementation
 
-The legacy Almost ARCADIA 0.6.12 (Django-based UI) is preserved as the
-Git tag [`legacy-ui-0.6.12`](https://github.com/arcadia/arcadia/tags/legacy-ui-0.6.12).
-The current branch is `headless-core`.
+The previous Django-based Almost ARCADIA implementation remains available in
+the separate [`NealCronin/Almost-ARCADIA`](https://github.com/NealCronin/Almost-ARCADIA)
+repository.
+
+This repository contains the clean headless rewrite. The legacy implementation
+may be consulted as a read-only behavioral reference, but it is not imported by
+or included in the new package.
 
 ## Documentation
 
@@ -60,7 +64,3 @@ These scripts run:
 3. `mypy src/arcadia`
 4. `pytest`
 5. `python -m build`
-
-## License
-
-ARCADIA is proprietary research software. See the repository for details.
