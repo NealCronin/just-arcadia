@@ -1,7 +1,8 @@
 # Session 01: Domain Models and Typed Errors
 
 - Status: planned
-- Target branch: `headless-core` or a dedicated Session 1 branch
+- Branch: `session/01-domain-models`
+- Target: merge into `headless-core` after review
 - Module: `arcadia.models`
 
 ## Objective

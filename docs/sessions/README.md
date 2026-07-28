@@ -15,6 +15,14 @@ That file is both:
 
 Do not create separate session prompts, design documents, handoff templates, or archived prompt copies. Git history already preserves prior versions of the session file.
 
+## Session index
+
+| Session | Module | Status |
+|---|---|---|
+| 00 | Project scaffold | Completed |
+| 01 | Domain models and errors | Planned |
+| 02 | Configuration | Not planned |
+
 ## Session lifecycle
 
 ### 1. Plan the session
@@ -32,6 +40,8 @@ Create `docs/sessions/NN-short-name.md` with:
 
 The session file should be self-contained enough to pass directly to a local agent. It may link to `docs/architecture.md`, `docs/contracts.md`, and earlier completed session files instead of repeating stable project-wide rules.
 
+Keep the session file focused. Aim for 100 to 250 lines for a normal module. Longer is acceptable only when defining a public protocol or many compatibility requirements — see `01-domain-models-and-errors.md` for the shared-contracts case.
+
 ### 2. Implement the session
 
 The agent must:
@@ -42,7 +52,17 @@ The agent must:
 4. run the required validation;
 5. update the same session file before stopping.
 
-The agent changes `Status` from `planned` to `completed`, `blocked`, or `partial` and fills in the completion record honestly.
+The agent marks `Status` as `in-progress` in the first commit and changes the final status to `completed`, `blocked`, or `partial` along with the completion record.
+
+### Branch convention
+
+Each session works on a dedicated branch:
+
+```text
+session/NN-short-name
+```
+
+Merge the session branch into `headless-core` after the work is reviewed and complete. This keeps each agent's changes reviewable and revertible as a unit.
 
 ### 3. Review the session
 
@@ -76,7 +96,7 @@ It does not need to reconstruct the project from every prior session file. Stabl
 # Session NN: Module Name
 
 - Status: planned
-- Branch: optional branch name
+- Branch: session/NN-short-name
 - Owner: local agent session
 
 ## Objective
