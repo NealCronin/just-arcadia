@@ -21,7 +21,7 @@ Do not create separate session prompts, design documents, handoff templates, or 
 |---|---|---|
 | 00 | Project scaffold | Completed |
 | 01 | Domain models and errors | Completed |
-| 02 | Configuration | Planned |
+| 02 | Configuration | Completed |
 
 ## Session lifecycle
 

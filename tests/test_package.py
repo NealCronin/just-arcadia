@@ -75,3 +75,46 @@ def test_package_versions_match() -> None:
     import arcadia
 
     assert arcadia.__version__ == get_version("arcadia-core")
+
+
+def test_import_arcadia_does_not_import_config() -> None:
+    """import arcadia must not eagerly import arcadia.config."""
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "import arcadia; import sys; print('arcadia.config' in sys.modules)",
+        ],
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    assert result.returncode == 0, f"subprocess failed: {result.stderr}"
+    assert result.stdout.strip() == "False", "arcadia.config was eagerly imported"
+
+
+def test_config_imports_no_heavy_or_future_modules() -> None:
+    """arcadia.config must not import heavy libraries or future runtime modules."""
+    forbidden = [
+        "arcadia.services",
+        "arcadia.events",
+        "arcadia.storage",
+        "arcadia.hardware",
+        "arcadia.backends",
+        "arcadia.transport",
+        "arcadia.inference",
+        "arcadia.analysis",
+        "arcadia.tools",
+    ]
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            f"import arcadia.config; import sys; print([m for m in {forbidden!r} if m in sys.modules])",
+        ],
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    assert result.returncode == 0, f"subprocess failed: {result.stderr}"
+    assert result.stdout.strip() == "[]", f"future modules were imported: {result.stdout}"
