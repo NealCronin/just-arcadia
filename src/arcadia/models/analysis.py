@@ -14,7 +14,7 @@ from datetime import datetime
 from enum import StrEnum
 from typing import Any
 
-from pydantic import field_validator, model_validator
+from pydantic import Field, field_validator, model_validator
 
 from arcadia.models.common import (
     ModelBase,
@@ -36,21 +36,21 @@ __all__ = [
 class AnalysisState(StrEnum):
     """Top-level state of an analysis run."""
 
-    pending = "pending"
-    preparing = "preparing"
-    running = "running"
-    completed = "completed"
-    failed = "failed"
+    PENDING = "pending"
+    PREPARING = "preparing"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FAILED = "failed"
 
 
 class StageState(StrEnum):
     """State of an individual stage within an analysis."""
 
-    pending = "pending"
-    running = "running"
-    completed = "completed"
-    failed = "failed"
-    skipped = "skipped"
+    PENDING = "pending"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    SKIPPED = "skipped"
 
 
 class AnalysisSpec(ModelBase):
@@ -59,7 +59,7 @@ class AnalysisSpec(ModelBase):
     tool_name: str
     input_path: str
     output_root: str
-    tool_settings: dict[str, Any] = {}
+    tool_settings: dict[str, Any] = Field(default_factory=dict)
 
     @field_validator("tool_name", "input_path", "output_root", mode="before")
     @classmethod
@@ -106,25 +106,25 @@ class StageStatus(ModelBase):
     @model_validator(mode="after")
     def _validate_state_timestamps(self) -> StageStatus:
         state = self.state
-        if state == StageState.pending:
+        if state == StageState.PENDING:
             if self.started_at is not None or self.finished_at is not None:
                 raise ValueError("pending stage must not have start or finish timestamps")
-        if state == StageState.running:
+        if state == StageState.RUNNING:
             if self.started_at is None:
                 raise ValueError("running stage must have a start time")
             if self.finished_at is not None:
                 raise ValueError("running stage must not have a finish time")
-        if state in (StageState.completed, StageState.failed):
+        if state in (StageState.COMPLETED, StageState.FAILED):
             if self.started_at is None or self.finished_at is None:
                 raise ValueError("terminal stage must have start and finish times")
-        if state == StageState.skipped:
+        if state == StageState.SKIPPED:
             if (self.started_at is None) != (self.finished_at is None):
                 raise ValueError("skipped stage must have either no timestamps or both")
-        if state == StageState.failed and self.error is None:
+        if state == StageState.FAILED and self.error is None:
             raise ValueError("failed stage must have an error")
-        if state == StageState.completed and self.error is not None:
+        if state == StageState.COMPLETED and self.error is not None:
             raise ValueError("completed stage must not have an error")
-        if state != StageState.failed and self.error is not None:
+        if state != StageState.FAILED and self.error is not None:
             raise ValueError("non-failed stage must not have an error")
         if self.started_at is not None and self.finished_at is not None:
             if self.started_at > self.finished_at:
@@ -159,46 +159,46 @@ class AnalysisStatus(ModelBase):
     @model_validator(mode="after")
     def _validate_state_timestamps(self) -> AnalysisStatus:
         state = self.state
-        if state == AnalysisState.pending:
+        if state == AnalysisState.PENDING:
             if self.started_at is not None or self.finished_at is not None:
                 raise ValueError("pending analysis must not have start or finish timestamps")
             if self.current_stage is not None:
                 raise ValueError("pending analysis must not have a current stage")
-        if state in (AnalysisState.preparing, AnalysisState.running):
+        if state in (AnalysisState.PREPARING, AnalysisState.RUNNING):
             if self.started_at is None:
                 raise ValueError(f"{state.value} analysis must have a start time")
             if self.finished_at is not None:
                 raise ValueError(f"{state.value} analysis must not have a finish time")
-        if state in (AnalysisState.completed, AnalysisState.failed):
+        if state in (AnalysisState.COMPLETED, AnalysisState.FAILED):
             if self.started_at is None or self.finished_at is None:
                 raise ValueError("completed/failed analysis must have start and finish times")
             if self.current_stage is not None:
                 raise ValueError("completed/failed analysis must not have a current stage")
-        if state == AnalysisState.failed and self.error is None:
+        if state == AnalysisState.FAILED and self.error is None:
             raise ValueError("failed analysis must have an error")
-        if state == AnalysisState.completed and self.error is not None:
+        if state == AnalysisState.COMPLETED and self.error is not None:
             raise ValueError("completed analysis must not have an error")
-        if state != AnalysisState.failed and self.error is not None:
+        if state != AnalysisState.FAILED and self.error is not None:
             raise ValueError("non-failed analysis must not have an error")
         # Stage name uniqueness
         stage_names = [s.name for s in self.stages]
         if len(stage_names) != len(set(stage_names)):
             raise ValueError("stage names must be unique")
         # Cross-checks: analysis state must be consistent with stage states
-        if state == AnalysisState.completed:
+        if state == AnalysisState.COMPLETED:
             for s in self.stages:
-                if s.state in (StageState.running, StageState.pending, StageState.failed):
+                if s.state in (StageState.RUNNING, StageState.PENDING, StageState.FAILED):
                     raise ValueError(f"completed analysis cannot contain a stage in {s.state.value} state")
-        if state == AnalysisState.failed:
+        if state == AnalysisState.FAILED:
             for s in self.stages:
-                if s.state == StageState.running:
+                if s.state == StageState.RUNNING:
                     raise ValueError("failed analysis cannot contain a stage in running state")
         # current_stage must reference a running stage
         if self.current_stage is not None:
             current = next((s for s in self.stages if s.name == self.current_stage), None)
             if current is None:
                 raise ValueError("current_stage must match a listed stage name")
-            if current.state != StageState.running:
+            if current.state != StageState.RUNNING:
                 raise ValueError("current_stage must reference a stage in running state")
         if self.started_at is not None and self.finished_at is not None:
             if self.started_at > self.finished_at:

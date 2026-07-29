@@ -374,5 +374,5 @@ class ResolvedRuntimeSettings(ModelBase):
 class ArtifactVisibility(StrEnum):
     """Visibility of a recorded artifact."""
 
-    final = "final"
-    internal = "internal"
+    FINAL = "final"
+    INTERNAL = "internal"

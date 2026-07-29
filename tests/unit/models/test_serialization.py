@@ -88,7 +88,7 @@ class TestSerialization:
         status = ServiceStatus(
             port=8000,
             service_type=ServiceType.LLM,
-            state=ServiceState.stopped,
+            state=ServiceState.STOPPED,
             updated_at=_now(),
         )
         restored = ServiceStatus.model_validate(status.model_dump(mode="json"))
@@ -102,7 +102,7 @@ class TestSerialization:
         assert restored.tool_settings == spec.tool_settings
 
     def test_stage_status(self) -> None:
-        stage = StageStatus(name="s", state=StageState.completed, started_at=_now(), finished_at=_now())
+        stage = StageStatus(name="s", state=StageState.COMPLETED, started_at=_now(), finished_at=_now())
         restored = StageStatus.model_validate(stage.model_dump(mode="json"))
         assert restored.name == stage.name
         assert restored.state == stage.state
@@ -111,7 +111,7 @@ class TestSerialization:
         status = AnalysisStatus(
             run_id="run-1",
             tool_name="tool",
-            state=AnalysisState.completed,
+            state=AnalysisState.COMPLETED,
             started_at=_now(),
             finished_at=_now(),
         )
@@ -125,7 +125,7 @@ class TestSerialization:
             name="out.json",
             relative_path="results/out.json",
             media_type="application/json",
-            visibility=ArtifactVisibility.final,
+            visibility=ArtifactVisibility.FINAL,
             created_at=_now(),
             metadata={"k": "v"},
         )

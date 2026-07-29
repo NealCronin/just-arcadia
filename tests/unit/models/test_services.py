@@ -131,7 +131,7 @@ class TestServiceStatusCoherence:
             ServiceStatus(
                 port=8000,
                 service_type=ServiceType.LLM,
-                state=ServiceState.ready,
+                state=ServiceState.READY,
                 resolved_settings=rs,
                 updated_at=now,
             )
@@ -140,7 +140,7 @@ class TestServiceStatusCoherence:
             ServiceStatus(
                 port=8000,
                 service_type=ServiceType.LLM,
-                state=ServiceState.ready,
+                state=ServiceState.READY,
                 endpoint=ep,
                 updated_at=now,
             )
@@ -148,7 +148,7 @@ class TestServiceStatusCoherence:
         ServiceStatus(
             port=8000,
             service_type=ServiceType.LLM,
-            state=ServiceState.ready,
+            state=ServiceState.READY,
             endpoint=ep,
             resolved_settings=rs,
             updated_at=now,
@@ -159,7 +159,7 @@ class TestServiceStatusCoherence:
             ServiceStatus(
                 port=8000,
                 service_type=ServiceType.LLM,
-                state=ServiceState.failed,
+                state=ServiceState.FAILED,
                 updated_at=_now(),
             )
 
@@ -168,7 +168,7 @@ class TestServiceStatusCoherence:
             ServiceStatus(
                 port=8000,
                 service_type=ServiceType.LLM,
-                state=ServiceState.stopped,
+                state=ServiceState.STOPPED,
                 endpoint=ServiceEndpoint(host="localhost", port=8000, service_type=ServiceType.LLM),
                 updated_at=_now(),
             )
@@ -180,7 +180,7 @@ class TestServiceStatusCoherence:
             ServiceStatus(
                 port=8000,
                 service_type=ServiceType.LLM,
-                state=ServiceState.ready,
+                state=ServiceState.READY,
                 endpoint=ServiceEndpoint(host="localhost", port=8000, service_type=ServiceType.LLM),
                 resolved_settings=ResolvedRuntimeSettings(backend="llama", values={}),
                 started_at=later,
@@ -192,7 +192,7 @@ class TestServiceStatusCoherence:
             ServiceStatus(
                 port=8000,
                 service_type=ServiceType.LLM,
-                state=ServiceState.stopped,
+                state=ServiceState.STOPPED,
                 updated_at=datetime(2024, 1, 1),
             )
 
@@ -203,7 +203,7 @@ class TestServiceStatusCoherence:
         status = ServiceStatus(
             port=8000,
             service_type=ServiceType.LLM,
-            state=ServiceState.stopped,
+            state=ServiceState.STOPPED,
             updated_at=datetime(2024, 1, 1, 12, 0, 0, tzinfo=tz),
         )
         assert status.updated_at.tzinfo is UTC
@@ -215,7 +215,7 @@ class TestServiceStatusCoherence:
             ServiceStatus(
                 port=8000,
                 service_type=ServiceType.LLM,
-                state=ServiceState.ready,
+                state=ServiceState.READY,
                 endpoint=ServiceEndpoint(host="localhost", port=8000, service_type=ServiceType.LLM),
                 resolved_settings=ResolvedRuntimeSettings(backend="llama", values={}),
                 error=ArcadiaErrorInfo(code="err", message="fail"),
@@ -225,11 +225,11 @@ class TestServiceStatusCoherence:
     @pytest.mark.parametrize(
         "state",
         [
-            ServiceState.resolving,
-            ServiceState.downloading,
-            ServiceState.starting,
-            ServiceState.stopping,
-            ServiceState.stopped,
+            ServiceState.RESOLVING,
+            ServiceState.DOWNLOADING,
+            ServiceState.STARTING,
+            ServiceState.STOPPING,
+            ServiceState.STOPPED,
         ],
     )
     def test_non_failed_states_reject_error(self, state: ServiceState) -> None:
@@ -249,7 +249,7 @@ class TestServiceStatusCoherence:
             ServiceStatus(
                 port=8000,
                 service_type=ServiceType.LLM,
-                state=ServiceState.stopped,
+                state=ServiceState.STOPPED,
                 endpoint=ServiceEndpoint(host="localhost", port=8081, service_type=ServiceType.LLM),
                 updated_at=now,
             )
@@ -260,7 +260,7 @@ class TestServiceStatusCoherence:
             ServiceStatus(
                 port=8000,
                 service_type=ServiceType.LLM,
-                state=ServiceState.stopped,
+                state=ServiceState.STOPPED,
                 endpoint=ServiceEndpoint(host="localhost", port=8000, service_type=ServiceType.SAM3),
                 updated_at=now,
             )
@@ -276,7 +276,7 @@ class TestServiceStatusCoherence:
             ServiceStatus(
                 port=8000,
                 service_type=ServiceType.LLM,
-                state=ServiceState.stopped,
+                state=ServiceState.STOPPED,
                 requested_spec=spec,
                 updated_at=now,
             )
@@ -288,7 +288,7 @@ class TestServiceStatusCoherence:
             ServiceStatus(
                 port=8000,
                 service_type=ServiceType.LLM,
-                state=ServiceState.stopped,
+                state=ServiceState.STOPPED,
                 requested_spec=spec,
                 updated_at=now,
             )
@@ -300,7 +300,7 @@ class TestOperationStatusCoherence:
             OperationStatus(
                 operation_id="op-1",
                 port=8000,
-                state=OperationState.pending,
+                state=OperationState.PENDING,
                 started_at=_now(),
                 updated_at=_now(),
             )
@@ -310,7 +310,7 @@ class TestOperationStatusCoherence:
             OperationStatus(
                 operation_id="op-1",
                 port=8000,
-                state=OperationState.running,
+                state=OperationState.RUNNING,
                 updated_at=_now(),
             )
 
@@ -321,7 +321,7 @@ class TestOperationStatusCoherence:
             OperationStatus(
                 operation_id="op-1",
                 port=8000,
-                state=OperationState.failed,
+                state=OperationState.FAILED,
                 started_at=now,
                 updated_at=later,
                 finished_at=later,
@@ -334,14 +334,14 @@ class TestOperationStatusCoherence:
             OperationStatus(
                 operation_id="op-1",
                 port=8000,
-                state=OperationState.succeeded,
+                state=OperationState.SUCCEEDED,
                 started_at=now,
                 updated_at=later,
                 finished_at=later,
                 error=ArcadiaErrorInfo(code="err", message="fail"),
             )
 
-    @pytest.mark.parametrize("state", [OperationState.pending, OperationState.running])
+    @pytest.mark.parametrize("state", [OperationState.PENDING, OperationState.RUNNING])
     def test_non_failed_states_reject_error(self, state: OperationState) -> None:
         now = _now()
         kwargs: dict[str, object] = {
@@ -351,7 +351,7 @@ class TestOperationStatusCoherence:
             "updated_at": now,
             "error": ArcadiaErrorInfo(code="err", message="fail"),
         }
-        if state == OperationState.running:
+        if state == OperationState.RUNNING:
             kwargs["started_at"] = now
         with pytest.raises(ValidationError):
             OperationStatus(**kwargs)  # type: ignore[arg-type]
@@ -362,7 +362,7 @@ class TestOperationStatusCoherence:
             OperationStatus(
                 operation_id="op-1",
                 port=8000,
-                state=OperationState.running,
+                state=OperationState.RUNNING,
                 progress=progress,  # type: ignore[arg-type]
                 started_at=_now(),
                 updated_at=_now(),
@@ -373,7 +373,7 @@ class TestOperationStatusCoherence:
             OperationStatus(
                 operation_id="",
                 port=8000,
-                state=OperationState.pending,
+                state=OperationState.PENDING,
                 updated_at=_now(),
             )
 
@@ -382,6 +382,6 @@ class TestOperationStatusCoherence:
             OperationStatus(
                 operation_id="op-1",
                 port=True,
-                state=OperationState.pending,
+                state=OperationState.PENDING,
                 updated_at=_now(),
             )

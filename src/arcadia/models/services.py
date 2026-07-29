@@ -53,22 +53,22 @@ class ServiceType(StrEnum):
 class ServiceState(StrEnum):
     """Lifecycle state of a single service instance."""
 
-    stopped = "stopped"
-    resolving = "resolving"
-    downloading = "downloading"
-    starting = "starting"
-    ready = "ready"
-    failed = "failed"
-    stopping = "stopping"
+    STOPPED = "stopped"
+    RESOLVING = "resolving"
+    DOWNLOADING = "downloading"
+    STARTING = "starting"
+    READY = "ready"
+    FAILED = "failed"
+    STOPPING = "stopping"
 
 
 class OperationState(StrEnum):
     """State of a long-running operation."""
 
-    pending = "pending"
-    running = "running"
-    succeeded = "succeeded"
-    failed = "failed"
+    PENDING = "pending"
+    RUNNING = "running"
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"
 
 
 # ---------------------------------------------------------------------------
@@ -236,16 +236,16 @@ class ServiceStatus(ModelBase):
     @model_validator(mode="after")
     def _validate_coherence(self) -> ServiceStatus:
         state = self.state
-        if state == ServiceState.ready:
+        if state == ServiceState.READY:
             if self.endpoint is None:
                 raise ValueError("ready state requires an endpoint")
             if self.resolved_settings is None:
                 raise ValueError("ready state requires resolved settings")
-        if state != ServiceState.failed and self.error is not None:
+        if state != ServiceState.FAILED and self.error is not None:
             raise ValueError("non-failed service must not have an error")
-        if state == ServiceState.failed and self.error is None:
+        if state == ServiceState.FAILED and self.error is None:
             raise ValueError("failed state requires an error")
-        if state == ServiceState.stopped:
+        if state == ServiceState.STOPPED:
             if self.endpoint is not None:
                 raise ValueError("stopped state must not expose an endpoint")
         # Cross-field consistency: endpoint, spec, and status must agree on port and service_type
@@ -321,20 +321,20 @@ class OperationStatus(ModelBase):
     @model_validator(mode="after")
     def _validate_state_timestamps(self) -> OperationStatus:
         state = self.state
-        if state == OperationState.pending:
+        if state == OperationState.PENDING:
             if self.started_at is not None or self.finished_at is not None:
                 raise ValueError("pending operation must not have start or finish times")
-        if state == OperationState.running:
+        if state == OperationState.RUNNING:
             if self.started_at is None:
                 raise ValueError("running operation must have a start time")
             if self.finished_at is not None:
                 raise ValueError("running operation must not have a finish time")
-        if state in (OperationState.succeeded, OperationState.failed):
+        if state in (OperationState.SUCCEEDED, OperationState.FAILED):
             if self.started_at is None or self.finished_at is None:
                 raise ValueError("terminal operation must have start and finish times")
-        if state == OperationState.failed and self.error is None:
+        if state == OperationState.FAILED and self.error is None:
             raise ValueError("failed operation must have an error")
-        if state != OperationState.failed and self.error is not None:
+        if state != OperationState.FAILED and self.error is not None:
             raise ValueError("non-failed operation must not have an error")
         # Validate timestamp ordering
         times = [t for t in (self.started_at, self.updated_at, self.finished_at) if t is not None]

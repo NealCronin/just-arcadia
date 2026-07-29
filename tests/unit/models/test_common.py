@@ -153,5 +153,5 @@ class TestRuntimeSettings:
 
 class TestArtifactVisibility:
     def test_values(self) -> None:
-        assert ArtifactVisibility.final.value == "final"
-        assert ArtifactVisibility.internal.value == "internal"
+        assert ArtifactVisibility.FINAL.value == "final"
+        assert ArtifactVisibility.INTERNAL.value == "internal"

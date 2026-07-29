@@ -63,27 +63,27 @@ class TestAnalysisSpec:
 
 class TestStageStatusCoherence:
     def test_pending_no_timestamps_ok(self) -> None:
-        stage = StageStatus(name="stage1", state=StageState.pending)
+        stage = StageStatus(name="stage1", state=StageState.PENDING)
         assert stage.started_at is None
         assert stage.finished_at is None
 
     def test_pending_with_start_rejected(self) -> None:
         with pytest.raises(ValidationError):
-            StageStatus(name="s", state=StageState.pending, started_at=_now())
+            StageStatus(name="s", state=StageState.PENDING, started_at=_now())
 
     def test_running_requires_start_no_finish(self) -> None:
         now = _now()
         # Missing start
         with pytest.raises(ValidationError):
-            StageStatus(name="s", state=StageState.running, updated_at=None)
+            StageStatus(name="s", state=StageState.RUNNING, updated_at=None)
         # With finish is rejected (no finish_at field, but started_at + state running)
         # Actually StageStatus has started_at and finished_at
         with pytest.raises(ValidationError):
-            StageStatus(name="s", state=StageState.running, started_at=now, finished_at=now)
+            StageStatus(name="s", state=StageState.RUNNING, started_at=now, finished_at=now)
 
     def test_terminal_requires_timestamps(self) -> None:
         with pytest.raises(ValidationError):
-            StageStatus(name="s", state=StageState.completed, started_at=_now())
+            StageStatus(name="s", state=StageState.COMPLETED, started_at=_now())
 
     def test_completed_rejects_error(self) -> None:
         now = _now()
@@ -91,7 +91,7 @@ class TestStageStatusCoherence:
         with pytest.raises(ValidationError):
             StageStatus(
                 name="s",
-                state=StageState.completed,
+                state=StageState.COMPLETED,
                 started_at=now,
                 finished_at=later,
                 error=ArcadiaErrorInfo(code="err", message="fail"),
@@ -101,15 +101,15 @@ class TestStageStatusCoherence:
         now = _now()
         later = now + timedelta(seconds=10)
         with pytest.raises(ValidationError):
-            StageStatus(name="s", state=StageState.failed, started_at=now, finished_at=later)
+            StageStatus(name="s", state=StageState.FAILED, started_at=now, finished_at=later)
 
     def test_attempt_must_be_positive(self) -> None:
         with pytest.raises(ValidationError):
-            StageStatus(name="s", state=StageState.pending, attempt=0)
+            StageStatus(name="s", state=StageState.PENDING, attempt=0)
 
     def test_bool_attempt_rejected(self) -> None:
         with pytest.raises(ValidationError):
-            StageStatus(name="s", state=StageState.pending, attempt=True)
+            StageStatus(name="s", state=StageState.PENDING, attempt=True)
 
     def test_started_after_finished_rejected(self) -> None:
         now = _now()
@@ -117,17 +117,17 @@ class TestStageStatusCoherence:
         with pytest.raises(ValidationError):
             StageStatus(
                 name="s",
-                state=StageState.completed,
+                state=StageState.COMPLETED,
                 started_at=now,
                 finished_at=earlier,
             )
 
     def test_naive_datetime_rejected(self) -> None:
         with pytest.raises(ValidationError):
-            StageStatus(name="s", state=StageState.running, started_at=datetime(2024, 1, 1))
+            StageStatus(name="s", state=StageState.RUNNING, started_at=datetime(2024, 1, 1))
 
     def test_skipped_no_timestamps_ok(self) -> None:
-        stage = StageStatus(name="s", state=StageState.skipped)
+        stage = StageStatus(name="s", state=StageState.SKIPPED)
         assert stage.started_at is None
         assert stage.finished_at is None
 
@@ -136,7 +136,7 @@ class TestStageStatusCoherence:
         later = now + timedelta(seconds=10)
         stage = StageStatus(
             name="s",
-            state=StageState.skipped,
+            state=StageState.SKIPPED,
             started_at=now,
             finished_at=later,
         )
@@ -144,7 +144,7 @@ class TestStageStatusCoherence:
 
     def test_skipped_only_start_rejected(self) -> None:
         with pytest.raises(ValidationError):
-            StageStatus(name="s", state=StageState.skipped, started_at=_now())
+            StageStatus(name="s", state=StageState.SKIPPED, started_at=_now())
 
 
 # ---------------------------------------------------------------------------
@@ -154,17 +154,17 @@ class TestStageStatusCoherence:
 
 class TestAnalysisStatusCoherence:
     def test_pending_no_timestamps_ok(self) -> None:
-        status = AnalysisStatus(run_id="run-1", tool_name="tool", state=AnalysisState.pending)
+        status = AnalysisStatus(run_id="run-1", tool_name="tool", state=AnalysisState.PENDING)
         assert status.started_at is None
         assert status.finished_at is None
 
     def test_preparing_requires_start(self) -> None:
         with pytest.raises(ValidationError):
-            AnalysisStatus(run_id="r", tool_name="t", state=AnalysisState.preparing)
+            AnalysisStatus(run_id="r", tool_name="t", state=AnalysisState.PREPARING)
 
     def test_running_requires_start(self) -> None:
         with pytest.raises(ValidationError):
-            AnalysisStatus(run_id="r", tool_name="t", state=AnalysisState.running)
+            AnalysisStatus(run_id="r", tool_name="t", state=AnalysisState.RUNNING)
 
     def test_running_with_finish_rejected(self) -> None:
         now = _now()
@@ -173,7 +173,7 @@ class TestAnalysisStatusCoherence:
             AnalysisStatus(
                 run_id="r",
                 tool_name="t",
-                state=AnalysisState.running,
+                state=AnalysisState.RUNNING,
                 started_at=now,
                 finished_at=later,
             )
@@ -183,7 +183,7 @@ class TestAnalysisStatusCoherence:
             AnalysisStatus(
                 run_id="r",
                 tool_name="t",
-                state=AnalysisState.completed,
+                state=AnalysisState.COMPLETED,
                 started_at=_now(),
             )
 
@@ -194,7 +194,7 @@ class TestAnalysisStatusCoherence:
             AnalysisStatus(
                 run_id="r",
                 tool_name="t",
-                state=AnalysisState.completed,
+                state=AnalysisState.COMPLETED,
                 started_at=now,
                 finished_at=later,
                 error=ArcadiaErrorInfo(code="e", message="f"),
@@ -207,25 +207,25 @@ class TestAnalysisStatusCoherence:
             AnalysisStatus(
                 run_id="r",
                 tool_name="t",
-                state=AnalysisState.failed,
+                state=AnalysisState.FAILED,
                 started_at=now,
                 finished_at=later,
             )
 
     def test_empty_run_id_rejected(self) -> None:
         with pytest.raises(ValidationError):
-            AnalysisStatus(run_id="", tool_name="t", state=AnalysisState.pending)
+            AnalysisStatus(run_id="", tool_name="t", state=AnalysisState.PENDING)
 
     def test_empty_tool_name_rejected(self) -> None:
         with pytest.raises(ValidationError):
-            AnalysisStatus(run_id="r", tool_name="", state=AnalysisState.pending)
+            AnalysisStatus(run_id="r", tool_name="", state=AnalysisState.PENDING)
 
     def test_pending_rejects_current_stage(self) -> None:
         with pytest.raises(ValidationError):
             AnalysisStatus(
                 run_id="r",
                 tool_name="t",
-                state=AnalysisState.pending,
+                state=AnalysisState.PENDING,
                 current_stage="stage1",
             )
 
@@ -236,7 +236,7 @@ class TestAnalysisStatusCoherence:
             AnalysisStatus(
                 run_id="r",
                 tool_name="t",
-                state=AnalysisState.completed,
+                state=AnalysisState.COMPLETED,
                 started_at=now,
                 finished_at=later,
                 current_stage="stage1",
@@ -248,18 +248,18 @@ class TestAnalysisStatusCoherence:
             AnalysisStatus(
                 run_id="r",
                 tool_name="t",
-                state=AnalysisState.running,
+                state=AnalysisState.RUNNING,
                 started_at=now,
                 current_stage="nonexistent",
             )
 
     def test_duplicate_stage_names_rejected(self) -> None:
-        stage = StageStatus(name="dup", state=StageState.pending)
+        stage = StageStatus(name="dup", state=StageState.PENDING)
         with pytest.raises(ValidationError):
             AnalysisStatus(
                 run_id="r",
                 tool_name="t",
-                state=AnalysisState.pending,
+                state=AnalysisState.PENDING,
                 stages=(stage, stage),
             )
 
@@ -268,7 +268,7 @@ class TestAnalysisStatusCoherence:
         with pytest.raises(ValidationError):
             StageStatus(
                 name="s",
-                state=StageState.running,
+                state=StageState.RUNNING,
                 started_at=now,
                 error=ArcadiaErrorInfo(code="e", message="f"),
             )
@@ -277,7 +277,7 @@ class TestAnalysisStatusCoherence:
         with pytest.raises(ValidationError):
             StageStatus(
                 name="s",
-                state=StageState.pending,
+                state=StageState.PENDING,
                 error=ArcadiaErrorInfo(code="e", message="f"),
             )
 
@@ -285,7 +285,7 @@ class TestAnalysisStatusCoherence:
         with pytest.raises(ValidationError):
             StageStatus(
                 name="s",
-                state=StageState.skipped,
+                state=StageState.SKIPPED,
                 error=ArcadiaErrorInfo(code="e", message="f"),
             )
 
@@ -296,10 +296,10 @@ class TestAnalysisStatusCoherence:
             AnalysisStatus(
                 run_id="r",
                 tool_name="t",
-                state=AnalysisState.completed,
+                state=AnalysisState.COMPLETED,
                 started_at=now,
                 finished_at=later,
-                stages=(StageStatus(name="s", state=StageState.pending),),
+                stages=(StageStatus(name="s", state=StageState.PENDING),),
             )
 
     def test_failed_analysis_with_running_stage_rejected(self) -> None:
@@ -309,14 +309,14 @@ class TestAnalysisStatusCoherence:
             AnalysisStatus(
                 run_id="r",
                 tool_name="t",
-                state=AnalysisState.failed,
+                state=AnalysisState.FAILED,
                 started_at=now,
                 finished_at=later,
                 error=ArcadiaErrorInfo(code="e", message="f"),
                 stages=(
                     StageStatus(
                         name="s",
-                        state=StageState.running,
+                        state=StageState.RUNNING,
                         started_at=now,
                     ),
                 ),
@@ -328,13 +328,13 @@ class TestAnalysisStatusCoherence:
         status = AnalysisStatus(
             run_id="r",
             tool_name="t",
-            state=AnalysisState.failed,
+            state=AnalysisState.FAILED,
             started_at=now,
             finished_at=later,
             error=ArcadiaErrorInfo(code="e", message="f"),
-            stages=(StageStatus(name="s", state=StageState.pending),),
+            stages=(StageStatus(name="s", state=StageState.PENDING),),
         )
-        assert status.state == AnalysisState.failed
+        assert status.state == AnalysisState.FAILED
 
     def test_current_stage_must_reference_running_stage(self) -> None:
         now = _now()
@@ -342,10 +342,10 @@ class TestAnalysisStatusCoherence:
             AnalysisStatus(
                 run_id="r",
                 tool_name="t",
-                state=AnalysisState.running,
+                state=AnalysisState.RUNNING,
                 started_at=now,
                 current_stage="s1",
-                stages=(StageStatus(name="s1", state=StageState.pending),),
+                stages=(StageStatus(name="s1", state=StageState.PENDING),),
             )
 
 
@@ -361,7 +361,7 @@ class TestArtifactRecord:
             name="output.json",
             relative_path="results/output.json",
             media_type="application/json",
-            visibility=ArtifactVisibility.final,
+            visibility=ArtifactVisibility.FINAL,
             created_at=_now(),
         )
         assert record.artifact_id == "art-1"
@@ -378,7 +378,7 @@ class TestArtifactRecord:
                 name="output.json",
                 relative_path=path,
                 media_type="application/json",
-                visibility=ArtifactVisibility.final,
+                visibility=ArtifactVisibility.FINAL,
                 created_at=_now(),
             )
 
@@ -389,7 +389,7 @@ class TestArtifactRecord:
                 name="out",
                 relative_path="out",
                 media_type="text",
-                visibility=ArtifactVisibility.internal,
+                visibility=ArtifactVisibility.INTERNAL,
                 created_at=_now(),
             )
 
@@ -400,7 +400,7 @@ class TestArtifactRecord:
             name="out",
             relative_path="out",
             media_type="text",
-            visibility=ArtifactVisibility.internal,
+            visibility=ArtifactVisibility.INTERNAL,
             created_at=_now(),
             metadata=original,
         )
@@ -414,6 +414,6 @@ class TestArtifactRecord:
                 name="out",
                 relative_path="out",
                 media_type="text",
-                visibility=ArtifactVisibility.internal,
+                visibility=ArtifactVisibility.INTERNAL,
                 created_at=datetime(2024, 1, 1),
             )

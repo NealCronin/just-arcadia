@@ -14,7 +14,7 @@ from __future__ import annotations
 import copy
 from typing import Any
 
-from pydantic import field_validator
+from pydantic import Field, field_validator
 
 from arcadia.models.common import ModelBase, _validate_json_mapping
 
@@ -41,7 +41,7 @@ class ArcadiaErrorInfo(ModelBase):
     code: str
     message: str
     retryable: bool = False
-    details: dict[str, Any] = {}
+    details: dict[str, Any] = Field(default_factory=dict)
 
     @field_validator("code")
     @classmethod
@@ -165,27 +165,19 @@ class ServiceError(ArcadiaError):
     _default_code = "service_error"
 
 
-class ServiceConflictError(ArcadiaError):
-    """A service specification conflicts with the current running service."""
-
+class ServiceConflictError(ServiceError):
     _default_code = "service_conflict"
 
 
-class ServiceStartupError(ArcadiaError):
-    """A service failed to start."""
-
+class ServiceStartupError(ServiceError):
     _default_code = "service_startup_failed"
 
 
-class ServiceHealthError(ArcadiaError):
-    """A service failed its health check."""
-
+class ServiceHealthError(ServiceError):
     _default_code = "service_health_failed"
 
 
-class ServiceNotRunningError(ArcadiaError):
-    """An operation was attempted on a service that is not running."""
-
+class ServiceNotRunningError(ServiceError):
     _default_code = "service_not_running"
 
 
@@ -201,9 +193,7 @@ class InferenceError(ArcadiaError):
     _default_code = "inference_error"
 
 
-class InferenceTimeoutError(ArcadiaError):
-    """A model inference request timed out."""
-
+class InferenceTimeoutError(InferenceError):
     _default_code = "inference_timeout"
     _default_retryable = True
 
