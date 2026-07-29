@@ -1,8 +1,7 @@
 # Session 01: Domain Models and Typed Errors
 
 - Status: completed
-- Branch: `session/01-domain-models`
-- Target: merge into `headless-core` after review
+- Branch: `headless-core` (merged from `session/01-domain-models`)
 - Module: `arcadia.models`
 
 ## Objective
@@ -553,7 +552,7 @@ from arcadia.models import LlamaServiceSpec, ServiceType
 - [x] Pydantic 2 is the only new required runtime dependency.
 - [x] `arcadia.models` implements every required public export.
 - [x] Success and failure behavior are tested.
-- [x] Models are frozen, strict, side-effect-free, and JSON-round-trippable.
+- [x] Models are attribute-frozen, explicitly validated per field, defensively copy input mappings, and support JSON round trips. Nested JSON structures remain mutable within the model instance.
 - [x] `import arcadia` remains lightweight.
 - [x] Ruff, mypy, pytest, build, and clean-wheel checks pass.
 - [x] The completion record below is filled honestly.
@@ -575,7 +574,7 @@ The implementation agent must replace the placeholders before stopping.
 
 ## Outcome
 
-Session 01 is complete. The `arcadia.models` package implements the full domain model and typed error contract: 34 public symbols covering errors, common types (NodeAddress, HuggingFaceFileSpec, runtime settings), service specs/endpoints/status, analysis status, and artifact records. All models use frozen Pydantic 2 with strict validation, JSON round-trip support, and defensive copying. All definition-of-done validation passes (157 tests, ruff, mypy, build, clean-venv wheel install).
+Session 01 is complete. The `arcadia.models` package implements the full domain model and typed error contract: 34 public symbols covering errors, common types (NodeAddress, HuggingFaceFileSpec, runtime settings), service specs/endpoints/status, analysis status, and artifact records. Models are attribute-frozen, explicitly validated per field, defensively copy input mappings, and support JSON round trips. Nested JSON structures remain mutable within the model instance. All definition-of-done validation passes (157 tests, ruff, mypy, build, clean-venv wheel install).
 
 ## Files changed
 
@@ -614,7 +613,7 @@ The root `arcadia` package does NOT re-export these — `arcadia.models` must be
 
 ## State and side effects
 
-The `arcadia.models` package owns no runtime state. Models are frozen (immutable). Importing `arcadia.models` performs no filesystem, network, subprocess, model-loading, or GPU operations. Defensively copy mapping inputs are enforced on all JSON-value fields. Naive datetimes are rejected; timezone-aware datetimes are normalized to UTC. JSON round trips (`model_dump(mode="json")` → `model_validate()`) succeed for all transport-facing models.
+The `arcadia.models` package owns no runtime state. Models are attribute-frozen, explicitly validated per field, defensively copy input mappings, and support JSON round trips. Nested JSON structures remain mutable within the model instance. Importing `arcadia.models` performs no filesystem, network, subprocess, model-loading, or GPU operations. Naive datetimes are rejected; timezone-aware datetimes are normalized to UTC.
 
 ## Errors and events
 

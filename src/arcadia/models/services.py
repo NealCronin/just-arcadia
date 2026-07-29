@@ -241,11 +241,10 @@ class ServiceStatus(ModelBase):
                 raise ValueError("ready state requires an endpoint")
             if self.resolved_settings is None:
                 raise ValueError("ready state requires resolved settings")
-            if self.error is not None:
-                raise ValueError("ready state must not have an error")
-        if state == ServiceState.failed:
-            if self.error is None:
-                raise ValueError("failed state requires an error")
+        if state != ServiceState.failed and self.error is not None:
+            raise ValueError("non-failed service must not have an error")
+        if state == ServiceState.failed and self.error is None:
+            raise ValueError("failed state requires an error")
         if state == ServiceState.stopped:
             if self.endpoint is not None:
                 raise ValueError("stopped state must not expose an endpoint")
@@ -335,8 +334,8 @@ class OperationStatus(ModelBase):
                 raise ValueError("terminal operation must have start and finish times")
         if state == OperationState.failed and self.error is None:
             raise ValueError("failed operation must have an error")
-        if state == OperationState.succeeded and self.error is not None:
-            raise ValueError("succeeded operation must not have an error")
+        if state != OperationState.failed and self.error is not None:
+            raise ValueError("non-failed operation must not have an error")
         # Validate timestamp ordering
         times = [t for t in (self.started_at, self.updated_at, self.finished_at) if t is not None]
         for i in range(len(times) - 1):

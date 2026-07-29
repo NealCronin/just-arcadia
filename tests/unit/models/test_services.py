@@ -222,6 +222,27 @@ class TestServiceStatusCoherence:
                 updated_at=now,
             )
 
+    @pytest.mark.parametrize(
+        "state",
+        [
+            ServiceState.resolving,
+            ServiceState.downloading,
+            ServiceState.starting,
+            ServiceState.stopping,
+            ServiceState.stopped,
+        ],
+    )
+    def test_non_failed_states_reject_error(self, state: ServiceState) -> None:
+        now = _now()
+        with pytest.raises(ValidationError):
+            ServiceStatus(
+                port=8000,
+                service_type=ServiceType.LLM,
+                state=state,
+                error=ArcadiaErrorInfo(code="err", message="fail"),
+                updated_at=now,
+            )
+
     def test_endpoint_port_mismatch_rejected(self) -> None:
         now = _now()
         with pytest.raises(ValidationError):
@@ -319,6 +340,21 @@ class TestOperationStatusCoherence:
                 finished_at=later,
                 error=ArcadiaErrorInfo(code="err", message="fail"),
             )
+
+    @pytest.mark.parametrize("state", [OperationState.pending, OperationState.running])
+    def test_non_failed_states_reject_error(self, state: OperationState) -> None:
+        now = _now()
+        kwargs: dict[str, object] = {
+            "operation_id": "op-1",
+            "port": 8000,
+            "state": state,
+            "updated_at": now,
+            "error": ArcadiaErrorInfo(code="err", message="fail"),
+        }
+        if state == OperationState.running:
+            kwargs["started_at"] = now
+        with pytest.raises(ValidationError):
+            OperationStatus(**kwargs)  # type: ignore[arg-type]
 
     @pytest.mark.parametrize("progress", [-0.1, 1.1, True])
     def test_progress_out_of_range(self, progress: object) -> None:
