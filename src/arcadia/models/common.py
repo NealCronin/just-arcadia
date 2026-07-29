@@ -122,6 +122,7 @@ class ModelBase(BaseModel):
     validated. Nested mutable values (dicts, lists) are not automatically
     deep-frozen; callers must not share mutable mapping objects between an
     active run and editable configuration.
+    Validation is explicit per-field; ``strict=True`` is not enabled globally.
     """
 
     model_config = ConfigDict(
@@ -142,12 +143,44 @@ def _validate_host(value: Any) -> str:
     host = value.strip()
     if not host:
         raise ValueError("host must not be empty")
-    if "\x00" in host:
-        raise ValueError("host must not contain null bytes")
+
+    # Reject control characters, spaces, and obviously invalid characters
     if any(c in host for c in _HOST_CONTROLS):
         raise ValueError("host must not contain control characters")
-    if "/" in host:
-        raise ValueError("host must not contain a path or scheme separator")
+    _INVALID_HOST_CHARS = " /\\@?#"
+    if any(c in host for c in _INVALID_HOST_CHARS):
+        bad = next(c for c in host if c in _INVALID_HOST_CHARS)
+        raise ValueError(f"host contains invalid character: {bad!r}")
+
+    # Try IP address parsing first (IPv4 or unbracketed IPv6)
+    try:
+        ipaddress.ip_address(host)
+        return host
+    except ValueError:
+        pass
+
+    # After IP parsing fails, reject colons (localhost:9000 is not a valid host)
+    if ":" in host:
+        raise ValueError("host must not contain a colon (port not allowed in host)")
+
+    # Accept the literal string "localhost"
+    if host == "localhost":
+        return host
+
+    # Validate as DNS hostname
+    if len(host) > 253:
+        raise ValueError("host exceeds maximum DNS length of 253 characters")
+    labels = host.split(".")
+    for label in labels:
+        if not label:
+            raise ValueError("host must not contain empty labels (consecutive dots)")
+        if len(label) > 63:
+            raise ValueError("host label exceeds maximum length of 63 characters")
+        if not re.match(r"^[A-Za-z0-9-]+$", label):
+            raise ValueError(f"host label contains invalid characters: {label!r}")
+        if label[0] == "-" or label[-1] == "-":
+            raise ValueError(f"host label must not start or end with a hyphen: {label!r}")
+
     return host
 
 
@@ -305,9 +338,12 @@ class ResolvedRuntimeSettings(ModelBase):
     @field_validator("backend")
     @classmethod
     def _backend_non_empty(cls, value: Any) -> str:
-        if not isinstance(value, str) or not value.strip():
+        if not isinstance(value, str):
+            raise ValueError("backend must be a string")
+        stripped = value.strip()
+        if not stripped:
             raise ValueError("backend must be a non-empty string")
-        return value
+        return stripped
 
     @field_validator("values", mode="before")
     @classmethod
@@ -319,11 +355,15 @@ class ResolvedRuntimeSettings(ModelBase):
     def _validate_notes(cls, value: Any) -> tuple[str, ...]:
         if not isinstance(value, (tuple, list)):
             raise ValueError("notes must be a sequence of strings")
-        result = tuple(str(n) for n in value)
-        for note in result:
-            if not note:
-                raise ValueError("notes must not contain empty strings")
-        return result
+        result = []
+        for n in value:
+            if not isinstance(n, str):
+                raise ValueError("notes must be strings")
+            stripped = n.strip()
+            if not stripped:
+                raise ValueError("notes must not contain empty strings after stripping")
+            result.append(stripped)
+        return tuple(result)
 
 
 # ---------------------------------------------------------------------------

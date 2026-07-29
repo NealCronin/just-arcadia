@@ -73,6 +73,12 @@ class TestArcadiaErrorBehavior:
         assert err.code == "my_error"
         assert err.retryable is True
 
+    def test_message_normalization_in_args(self) -> None:
+        err = ArcadiaError("  boom  ")
+        assert str(err) == "boom"
+        assert err.args[0] == "boom"
+        assert err.message == "boom"
+
 
 class TestCauseRetention:
     def test_cause_retained(self) -> None:

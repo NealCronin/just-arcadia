@@ -97,12 +97,12 @@ class ArcadiaError(Exception):
         details: dict[str, Any] | None = None,
         cause: BaseException | Any | None = None,
     ) -> None:
-        super().__init__(message)
         if not isinstance(message, str):
             message = str(message)
         message = message.strip()
         if not message:
             raise ValueError("message must not be empty")
+        super().__init__(message)
 
         self._message: str = message
         code_str: str = code.strip() if isinstance(code, str) and code.strip() else ""

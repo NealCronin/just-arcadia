@@ -263,6 +263,91 @@ class TestAnalysisStatusCoherence:
                 stages=(stage, stage),
             )
 
+    def test_running_stage_rejects_error(self) -> None:
+        now = _now()
+        with pytest.raises(ValidationError):
+            StageStatus(
+                name="s",
+                state=StageState.running,
+                started_at=now,
+                error=ArcadiaErrorInfo(code="e", message="f"),
+            )
+
+    def test_pending_stage_rejects_error(self) -> None:
+        with pytest.raises(ValidationError):
+            StageStatus(
+                name="s",
+                state=StageState.pending,
+                error=ArcadiaErrorInfo(code="e", message="f"),
+            )
+
+    def test_skipped_stage_rejects_error(self) -> None:
+        with pytest.raises(ValidationError):
+            StageStatus(
+                name="s",
+                state=StageState.skipped,
+                error=ArcadiaErrorInfo(code="e", message="f"),
+            )
+
+    def test_completed_analysis_with_pending_stage_rejected(self) -> None:
+        now = _now()
+        later = now + timedelta(seconds=10)
+        with pytest.raises(ValidationError):
+            AnalysisStatus(
+                run_id="r",
+                tool_name="t",
+                state=AnalysisState.completed,
+                started_at=now,
+                finished_at=later,
+                stages=(StageStatus(name="s", state=StageState.pending),),
+            )
+
+    def test_failed_analysis_with_running_stage_rejected(self) -> None:
+        now = _now()
+        later = now + timedelta(seconds=10)
+        with pytest.raises(ValidationError):
+            AnalysisStatus(
+                run_id="r",
+                tool_name="t",
+                state=AnalysisState.failed,
+                started_at=now,
+                finished_at=later,
+                error=ArcadiaErrorInfo(code="e", message="f"),
+                stages=(
+                    StageStatus(
+                        name="s",
+                        state=StageState.running,
+                        started_at=now,
+                    ),
+                ),
+            )
+
+    def test_failed_analysis_with_only_pending_stages_and_error_valid(self) -> None:
+        now = _now()
+        later = now + timedelta(seconds=10)
+        status = AnalysisStatus(
+            run_id="r",
+            tool_name="t",
+            state=AnalysisState.failed,
+            started_at=now,
+            finished_at=later,
+            error=ArcadiaErrorInfo(code="e", message="f"),
+            stages=(StageStatus(name="s", state=StageState.pending),),
+        )
+        assert status.state == AnalysisState.failed
+
+    def test_current_stage_must_reference_running_stage(self) -> None:
+        now = _now()
+        with pytest.raises(ValidationError):
+            AnalysisStatus(
+                run_id="r",
+                tool_name="t",
+                state=AnalysisState.running,
+                started_at=now,
+                current_stage="s1",
+                stages=(StageStatus(name="s1", state=StageState.pending),),
+            )
+
 
 # ---------------------------------------------------------------------------
 # ArtifactRecord path validation

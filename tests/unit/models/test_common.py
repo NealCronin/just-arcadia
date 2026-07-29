@@ -34,6 +34,23 @@ class TestNodeAddress:
         addr = NodeAddress(host="::1", instruction_port=8000)
         assert addr.base_url == "http://[::1]:8000"
 
+    @pytest.mark.parametrize(
+        "host",
+        [
+            "localhost:9000",
+            "bad host",
+            "user@example.com",
+            "host?query",
+            "host#fragment",
+            "node..local",
+            "node-.local",
+            "node.-local",
+        ],
+    )
+    def test_invalid_hosts_rejected(self, host: str) -> None:
+        with pytest.raises(ValidationError):
+            NodeAddress(host=host, instruction_port=8000)
+
     @pytest.mark.parametrize("port", [0, 65536, -1, True, "8000"])
     def test_invalid_ports(self, port: object) -> None:
         with pytest.raises(ValidationError):
@@ -116,6 +133,22 @@ class TestRuntimeSettings:
         settings = ResolvedRuntimeSettings(backend="llama.cpp", values={"threads": 4}, notes=("auto",))
         assert settings.backend == "llama.cpp"
         assert settings.notes == ("auto",)
+
+    def test_resolved_backend_stripped(self) -> None:
+        settings = ResolvedRuntimeSettings(backend="  llama.cpp  ", values={})
+        assert settings.backend == "llama.cpp"
+
+    def test_resolved_notes_reject_non_strings(self) -> None:
+        with pytest.raises(ValidationError):
+            ResolvedRuntimeSettings(backend="llama.cpp", values={}, notes=(123,))  # type: ignore[arg-type]
+
+    def test_resolved_notes_stripped(self) -> None:
+        settings = ResolvedRuntimeSettings(backend="llama.cpp", values={}, notes=("  auto  ",))
+        assert settings.notes == ("auto",)
+
+    def test_resolved_notes_reject_empty_after_strip(self) -> None:
+        with pytest.raises(ValidationError):
+            ResolvedRuntimeSettings(backend="llama.cpp", values={}, notes=("   ",))
 
 
 class TestArtifactVisibility:

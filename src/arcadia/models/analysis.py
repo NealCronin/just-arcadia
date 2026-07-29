@@ -124,6 +124,8 @@ class StageStatus(ModelBase):
             raise ValueError("failed stage must have an error")
         if state == StageState.completed and self.error is not None:
             raise ValueError("completed stage must not have an error")
+        if state != StageState.failed and self.error is not None:
+            raise ValueError("non-failed stage must not have an error")
         if self.started_at is not None and self.finished_at is not None:
             if self.started_at > self.finished_at:
                 raise ValueError("started_at cannot be after finished_at")
@@ -176,14 +178,28 @@ class AnalysisStatus(ModelBase):
             raise ValueError("failed analysis must have an error")
         if state == AnalysisState.completed and self.error is not None:
             raise ValueError("completed analysis must not have an error")
+        if state != AnalysisState.failed and self.error is not None:
+            raise ValueError("non-failed analysis must not have an error")
         # Stage name uniqueness
         stage_names = [s.name for s in self.stages]
         if len(stage_names) != len(set(stage_names)):
             raise ValueError("stage names must be unique")
-        # current_stage must reference an existing stage
+        # Cross-checks: analysis state must be consistent with stage states
+        if state == AnalysisState.completed:
+            for s in self.stages:
+                if s.state in (StageState.running, StageState.pending, StageState.failed):
+                    raise ValueError(f"completed analysis cannot contain a stage in {s.state.value} state")
+        if state == AnalysisState.failed:
+            for s in self.stages:
+                if s.state == StageState.running:
+                    raise ValueError("failed analysis cannot contain a stage in running state")
+        # current_stage must reference a running stage
         if self.current_stage is not None:
-            if self.current_stage not in stage_names:
+            current = next((s for s in self.stages if s.name == self.current_stage), None)
+            if current is None:
                 raise ValueError("current_stage must match a listed stage name")
+            if current.state != StageState.running:
+                raise ValueError("current_stage must reference a stage in running state")
         if self.started_at is not None and self.finished_at is not None:
             if self.started_at > self.finished_at:
                 raise ValueError("started_at cannot be after finished_at")
