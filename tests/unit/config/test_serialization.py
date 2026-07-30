@@ -84,6 +84,21 @@ class TestLoadsConfig:
             loads_config(123)  # type: ignore[arg-type]
 
 
+class TestSchemaVersionTypes:
+    @pytest.mark.parametrize(
+        "document",
+        [
+            '{"schema_version": true}',
+            '{"schema_version": 1.0}',
+            '{"schema_version": "1"}',
+        ],
+    )
+    def test_non_integer_schema_versions_are_unsupported(self, document: str) -> None:
+        with pytest.raises(ConfigurationError) as exc_info:
+            loads_config(document)
+        assert exc_info.value.code == "config_unsupported_version"
+
+
 # ---------------------------------------------------------------------------
 # Malformed JSON and non-object roots
 # ---------------------------------------------------------------------------

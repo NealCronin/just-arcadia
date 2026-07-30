@@ -1,7 +1,7 @@
 # Session 02: Configuration
 
 - Status: completed
-- Branch: `session/02-configuration`
+- Branch: `headless-core` (merged from `session/02-configuration`)
 - Owner: local agent session
 - Module: `arcadia.config`
 
@@ -459,19 +459,19 @@ Never claim an unexecuted command passed.
 
 ## Definition of done
 
-- [ ] Every required public export exists.
-- [ ] No new runtime dependency was added.
-- [ ] Default and representative configurations round-trip.
-- [ ] References, requested settings, extensions, retry, and output settings validate.
-- [ ] All public failures use stable `ConfigurationError` codes.
-- [ ] Atomic saves preserve existing files on injected failures.
-- [ ] Snapshotting detaches nested structures.
-- [ ] Loading never writes.
-- [ ] No runtime service, hardware, transport, event, storage, analysis, CLI, or UI behavior was added.
-- [ ] Root import remains lightweight.
-- [ ] Ruff, mypy, pytest, build, and clean-wheel validation pass.
-- [ ] This same file contains an honest completion record.
-- [ ] `docs/sessions/README.md` marks Session 02 completed only after validation succeeds.
+- [x] Every required public export exists.
+- [x] No new runtime dependency was added.
+- [x] Default and representative configurations round-trip.
+- [x] References, requested settings, extensions, retry, and output settings validate.
+- [x] All public failures use stable `ConfigurationError` codes.
+- [x] Atomic saves preserve existing files on injected failures.
+- [x] Snapshotting detaches nested structures.
+- [x] Loading never writes.
+- [x] No runtime service, hardware, transport, event, storage, analysis, CLI, or UI behavior was added.
+- [x] Root import remains lightweight.
+- [x] Ruff, mypy, pytest, build, and clean-wheel validation pass.
+- [x] This same file contains an honest completion record.
+- [x] `docs/sessions/README.md` marks Session 02 completed only after validation succeeds.
 
 ## Stop conditions
 
@@ -497,8 +497,8 @@ Session 02 is complete. The `arcadia.config` package implements the full JSON co
 ### Tests
 - `tests/unit/config/__init__.py` — test package marker
 - `tests/unit/config/test_models.py` — model validation (default config, node rules, one-local-node limit, name trimming, LLM/visual-LLM/SAM profiles, reference validation, profile reuse, extensions, unknown field rejection, retry boundaries, output validation, schema version, typed addresses, non-string keys, and normalized-key collisions)
-- `tests/unit/config/test_serialization.py` — serialization (loads, malformed JSON, non-object roots, validation conversion, deterministic formatting, Unicode, trailing newline, load/dump/load equality, snapshot detachment)
-- `tests/integration/test_config_files.py` — file I/O (missing/undecodable files, round trip, parent creation, non-mutating loads, atomic replacement, complete handling of partial writes, write/replace failure injection, temp cleanup, typed error codes, no POSIX-only assumptions)
+- `tests/unit/config/test_serialization.py` — serialization (loads, malformed JSON, non-object roots, exact schema-version type errors, validation conversion, deterministic formatting, Unicode, trailing newline, load/dump/load equality, snapshot detachment)
+- `tests/integration/test_config_files.py` — file I/O (missing/undecodable files, invalid path argument types, round trip, parent creation, non-mutating loads, atomic replacement, complete handling of partial writes, write/replace failure injection, temp cleanup, typed error codes, no POSIX-only assumptions)
 - `tests/test_package.py` — added `test_import_arcadia_does_not_import_config` and `test_config_imports_no_heavy_or_future_modules`
 
 ### Documentation
@@ -537,7 +537,7 @@ All definition-of-done checks pass:
 - `ruff format --check .` — 40 files already formatted
 - `ruff check .` — all checks passed
 - `mypy src/arcadia` — no issues found in 10 source files
-- `pytest` — 335 passed
+- `pytest` — 348 passed
 - `python -m build` — built wheel and sdist
 - Clean-venv wheel install + `import arcadia; from arcadia.config import ArcadiaConfig, dumps_config, loads_config; config = ArcadiaConfig(); assert loads_config(dumps_config(config)) == config` — success
 

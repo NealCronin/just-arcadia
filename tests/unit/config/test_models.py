@@ -142,6 +142,16 @@ class TestNodeValidation:
         node = NodeConfig(kind=NodeKind.LOCAL, description="  trimmed  ")
         assert node.description == "trimmed"
 
+    @pytest.mark.parametrize("value", ["\nlocal", "local\n", "\tlocal", "local\t"])
+    def test_name_control_characters_at_edges_rejected(self, value: str) -> None:
+        with pytest.raises(ValidationError):
+            ArcadiaConfig.model_validate({"nodes": {value: {"kind": "local"}}})
+
+    @pytest.mark.parametrize("value", ["\ndescription", "description\n", "\tdescription", "description\t"])
+    def test_description_control_characters_at_edges_rejected(self, value: str) -> None:
+        with pytest.raises(ValidationError):
+            NodeConfig(kind=NodeKind.LOCAL, description=value)
+
 
 # ---------------------------------------------------------------------------
 # Cross-reference: at most one local node

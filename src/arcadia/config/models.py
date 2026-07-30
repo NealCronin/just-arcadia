@@ -102,11 +102,13 @@ def _validate_json_mapping(value: Any) -> dict[str, Any]:
 
 def _validate_name(name: str, field_name: str) -> str:
     """Validate a name is non-empty after trimming and has no control characters."""
-    stripped = name.strip() if isinstance(name, str) else ""
+    if not isinstance(name, str):
+        raise ValueError(f"{field_name} must be a string")
+    if any(c in _NAME_CONTROLS for c in name):
+        raise ValueError(f"{field_name} must not contain control characters")
+    stripped = name.strip()
     if not stripped:
         raise ValueError(f"{field_name} must not be empty")
-    if any(c in _NAME_CONTROLS for c in stripped):
-        raise ValueError(f"{field_name} must not contain control characters")
     return stripped
 
 
@@ -121,10 +123,9 @@ def _validate_description(value: str) -> str:
     """Validate a description string. Empty is allowed; otherwise trim and reject controls."""
     if not isinstance(value, str):
         raise ValueError("description must be a string")
-    stripped = value.strip()
-    if stripped and any(c in _CONTROLS for c in stripped):
+    if any(c in _CONTROLS for c in value):
         raise ValueError("description must not contain control characters")
-    return stripped
+    return value.strip()
 
 
 def _reject_bool_as_numeric(value: Any, field_name: str) -> None:

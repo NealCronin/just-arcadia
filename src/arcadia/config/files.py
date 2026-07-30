@@ -73,11 +73,11 @@ def loads_config(text: str) -> ArcadiaConfig:
             code="config_invalid_format",
         )
 
-    # Check schema version before full validation
+    # Check schema version before full validation, preserving exact JSON types.
     version = data.get("schema_version", CONFIG_SCHEMA_VERSION)
-    if version != CONFIG_SCHEMA_VERSION:
+    if type(version) is not int or version != CONFIG_SCHEMA_VERSION:
         raise ConfigurationError(
-            f"unsupported schema version: {version}",
+            f"unsupported schema version: {version!r}",
             code="config_unsupported_version",
         )
 
@@ -139,8 +139,14 @@ def load_config(path: str | os.PathLike[str]) -> ArcadiaConfig:
 
     Reads explicit UTF-8. Never creates, modifies, or migrates the file.
     """
-    p = Path(path)
-
+    try:
+        p = Path(path)
+    except (TypeError, ValueError) as e:
+        raise ConfigurationError(
+            "invalid configuration path",
+            code="config_read_failed",
+            cause=e,
+        ) from e
     try:
         raw = p.read_bytes()
     except FileNotFoundError as e:
@@ -186,10 +192,17 @@ def save_config(config: ArcadiaConfig, path: str | os.PathLike[str]) -> None:
     Uses a temporary file in the destination directory, fsyncs, then replaces.
     On failure, leaves any existing file unchanged and cleans up the temp file.
     """
-    p = Path(path)
-
     # Serialize first — fail before touching the filesystem
     content = dumps_config(config)
+
+    try:
+        p = Path(path)
+    except (TypeError, ValueError) as e:
+        raise ConfigurationError(
+            "invalid configuration path",
+            code="config_write_failed",
+            cause=e,
+        ) from e
 
     # Create parent directories if needed
     try:

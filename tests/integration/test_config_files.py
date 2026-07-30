@@ -97,6 +97,12 @@ class TestLoadErrors:
         with pytest.raises(ConfigurationError, match="directory"):
             load_config(str(tmp_path))
 
+    def test_invalid_path_type_is_typed_error(self) -> None:
+        with pytest.raises(ConfigurationError) as exc_info:
+            load_config(None)  # type: ignore[arg-type]
+        assert exc_info.value.code == "config_read_failed"
+        assert isinstance(exc_info.value.__cause__, TypeError)
+
 
 # ---------------------------------------------------------------------------
 # Normal round trip
@@ -121,6 +127,12 @@ class TestRoundTrip:
         loaded = load_config(config_path)
 
         assert loaded == config
+
+    def test_invalid_path_type_is_typed_error(self) -> None:
+        with pytest.raises(ConfigurationError) as exc_info:
+            save_config(ArcadiaConfig(), None)  # type: ignore[arg-type]
+        assert exc_info.value.code == "config_write_failed"
+        assert isinstance(exc_info.value.__cause__, TypeError)
 
 
 # ---------------------------------------------------------------------------
