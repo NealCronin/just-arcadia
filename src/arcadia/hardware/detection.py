@@ -8,6 +8,7 @@ import math
 import os
 import platform as platform_module
 import subprocess
+from ctypes import wintypes
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Protocol, runtime_checkable
@@ -119,7 +120,10 @@ def _windows_memory() -> MemoryInfo:
     if windll is None:
         raise OSError("Windows API unavailable")
     kernel32 = windll.kernel32
-    if not kernel32.GlobalMemoryStatusEx(ctypes.byref(status)):
+    global_memory_status_ex = kernel32.GlobalMemoryStatusEx
+    global_memory_status_ex.argtypes = [ctypes.POINTER(MemoryStatusEx)]
+    global_memory_status_ex.restype = wintypes.BOOL
+    if not global_memory_status_ex(ctypes.byref(status)):
         raise OSError("GlobalMemoryStatusEx failed")
     return MemoryInfo(total_bytes=int(status.ullTotalPhys), available_bytes=int(status.ullAvailPhys))
 
