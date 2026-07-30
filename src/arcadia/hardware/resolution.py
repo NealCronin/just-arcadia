@@ -68,7 +68,7 @@ def resolve_runtime_settings(spec: ServiceSpec, hardware: HardwareCapabilities) 
             notes.append(f"device auto-selected CUDA accelerator {cuda_accelerators[0].index}")
         elif metal_accelerators:
             device = DeviceKind.METAL
-            notes.append("device auto-selected Metal accelerator 0")
+            notes.append(f"device auto-selected Metal accelerator {metal_accelerators[0].index}")
         else:
             device = DeviceKind.CPU
             notes.append("no supported accelerator detected; device auto-selected CPU")

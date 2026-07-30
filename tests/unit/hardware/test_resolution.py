@@ -60,10 +60,11 @@ def test_auto_prefers_cuda_and_selects_lowest_device_index() -> None:
 
 
 def test_auto_falls_back_to_metal_then_cpu_and_sam_maps_backend() -> None:
-    metal = resolve_runtime_settings(sam({}), hardware(AcceleratorInfo(kind=DeviceKind.METAL, index=0, name="Apple")))
+    metal = resolve_runtime_settings(sam({}), hardware(AcceleratorInfo(kind=DeviceKind.METAL, index=3, name="Apple")))
     cpu = resolve_runtime_settings(sam({}), hardware())
     assert metal.backend == "sam3"
     assert metal.values == {"device": "metal"}
+    assert metal.notes == ("device auto-selected Metal accelerator 3",)
     assert cpu.values == {"device": "cpu"}
     assert cpu.notes == ("no supported accelerator detected; device auto-selected CPU",)
 

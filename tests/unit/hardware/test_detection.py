@@ -24,6 +24,73 @@ def test_detector_construction_performs_no_subprocess_probe(monkeypatch: pytest.
     SystemHardwareDetector()
 
 
+@pytest.mark.parametrize("timeout", [0, -1, float("inf"), float("nan"), True, "1"])
+def test_detector_requires_finite_positive_timeout(timeout: object) -> None:
+    with pytest.raises(ValueError, match="finite number greater than zero"):
+        SystemHardwareDetector(command_timeout_seconds=timeout)  # type: ignore[arg-type]
+
+
+def test_command_execution_is_bounded_and_never_uses_a_shell(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[dict[str, object]] = []
+
+    def fake_run(arguments: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        calls.append(kwargs)
+        return subprocess.CompletedProcess(arguments, 0, stdout="value", stderr="")
+
+    detector = SystemHardwareDetector(command_timeout_seconds=2.5)
+    monkeypatch.setattr(detection.subprocess, "run", fake_run)
+    assert detector._run_command(["utility"]) == "value"
+    assert calls == [{"capture_output": True, "check": False, "shell": False, "text": True, "timeout": 2.5}]
+
+
+def test_cuda_nonzero_status_is_rejected_as_a_complete_probe(monkeypatch: pytest.MonkeyPatch) -> None:
+    detector = SystemHardwareDetector()
+    monkeypatch.setattr(
+        detection.subprocess,
+        "run",
+        lambda arguments, **_kwargs: subprocess.CompletedProcess(arguments, 1, stdout="partial", stderr="failure"),
+    )
+    accelerators, note = detector._detect_cuda()
+    assert accelerators == ()
+    assert note == "CUDA detection unavailable: nvidia-smi probe failed"
+
+
+@pytest.mark.parametrize(
+    ("output", "expected_note"),
+    [
+        ("", "CUDA detection unavailable: nvidia-smi returned no devices"),
+        ("unsupported query", "CUDA detection unavailable: nvidia-smi returned malformed data"),
+    ],
+)
+def test_cuda_empty_and_unsupported_output_are_rejected(
+    monkeypatch: pytest.MonkeyPatch, output: str, expected_note: str
+) -> None:
+    detector = SystemHardwareDetector()
+    monkeypatch.setattr(detector, "_run_command", lambda _: output)
+    accelerators, note = detector._detect_cuda()
+    assert accelerators == ()
+    assert note == expected_note
+
+
+def test_repeated_detection_returns_detached_uncached_snapshots(monkeypatch: pytest.MonkeyPatch) -> None:
+    detector = SystemHardwareDetector()
+    cuda_calls = 0
+
+    def no_cuda() -> tuple[tuple[AcceleratorInfo, ...], str | None]:
+        nonlocal cuda_calls
+        cuda_calls += 1
+        return (), None
+
+    monkeypatch.setattr(detector, "_detect_cuda", no_cuda)
+    first = detector.detect()
+    second = detector.detect()
+    assert cuda_calls == 2
+    assert first is not second
+    assert first.platform is not second.platform
+    assert first.cpu is not second.cpu
+    assert first.memory is not second.memory
+
+
 def test_linux_detection_parses_cpu_memory_and_sorted_cuda(monkeypatch: pytest.MonkeyPatch) -> None:
     detector = SystemHardwareDetector(command_timeout_seconds=1)
     monkeypatch.setattr(detection.platform_module, "system", lambda: "Linux")
