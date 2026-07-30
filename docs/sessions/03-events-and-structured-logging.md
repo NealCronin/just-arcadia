@@ -1,7 +1,7 @@
 # Session 03: Events and Structured Logging
 
 - Status: completed
-- Branch: `session/03-events`
+- Branch: `headless-core` (merged from `session/03-events`)
 - Owner: local agent session
 - Module: `arcadia.events`
 
@@ -426,20 +426,20 @@ Never claim an unexecuted command passed.
 
 ## Definition of done
 
-- [ ] Every required public export exists.
-- [ ] No new runtime dependency was added.
-- [ ] Events validate and round-trip through JSON.
-- [ ] Exception events retain complete traceback details without serializing exception objects.
-- [ ] Sink failures never escape `EventEmitter.emit()`.
-- [ ] Remaining sinks receive an event after another sink fails.
-- [ ] In-memory, callback, and JSONL sinks behave as specified.
-- [ ] Concurrent emission and JSONL writes are tested.
-- [ ] JSONL logging does not choose or create run directories.
-- [ ] No service, storage, hardware, transport, inference, tool, analysis, CLI, or UI behavior was added.
-- [ ] Root import remains lightweight.
-- [ ] Ruff, mypy, pytest, build, and clean-wheel validation pass.
-- [ ] This same file contains an honest completion record.
-- [ ] `docs/sessions/README.md` marks Session 03 completed only after validation succeeds.
+- [x] Every required public export exists.
+- [x] No new runtime dependency was added.
+- [x] Events validate and round-trip through JSON.
+- [x] Exception events retain complete traceback details without serializing exception objects.
+- [x] Sink failures never escape `EventEmitter.emit()`.
+- [x] Remaining sinks receive an event after another sink fails.
+- [x] In-memory, callback, and JSONL sinks behave as specified.
+- [x] Concurrent emission and JSONL writes are tested.
+- [x] JSONL logging does not choose or create run directories.
+- [x] No service, storage, hardware, transport, inference, tool, analysis, CLI, or UI behavior was added.
+- [x] Root import remains lightweight.
+- [x] Ruff, mypy, pytest, build, and clean-wheel validation pass.
+- [x] This same file contains an honest completion record.
+- [x] `docs/sessions/README.md` marks Session 03 completed only after validation succeeds.
 
 ## Stop conditions
 
@@ -472,7 +472,7 @@ Session 03 is complete. `arcadia.events` implements validated event envelopes, e
 
 ## Delivered public API
 
-`arcadia.events` exports `EventLevel`, `ArcadiaEvent`, `EventSink`, `SinkFailure`, `EmitReport`, `EventEmitter`, `InMemoryEventSink`, `CallbackEventSink`, `JsonlEventSink`, `make_event`, `exception_event`, `dumps_event`, and `loads_event`. The root `arcadia` package does not re-export them.
+`arcadia.events` exports `EventLevel`, `ArcadiaEvent`, `EventSink`, `SinkFailure`, `EmitReport`, `EventEmitter`, `InMemoryEventSink`, `CallbackEventSink`, `JsonlEventSink`, `make_event`, `exception_event`, `dumps_event`, and `loads_event`. `make_event()` defaults `level` to `EventLevel.INFO`. The root `arcadia` package does not re-export them.
 
 ## State and side effects
 
@@ -490,7 +490,7 @@ Validation completed:
 - `ruff format --check .` — 50 files already formatted
 - `ruff check .` — success
 - `mypy src/arcadia` — success
-- `pytest` — 378 passed
+- `pytest` — 380 passed
 - `python -m build` — wheel and sdist built successfully
 - Clean virtual environment wheel smoke test — `EventEmitter` delivered one event to `InMemoryEventSink`
 

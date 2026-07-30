@@ -93,6 +93,22 @@ def test_import_arcadia_does_not_import_config() -> None:
     assert result.stdout.strip() == "False", "arcadia.config was eagerly imported"
 
 
+def test_import_arcadia_does_not_import_events() -> None:
+    """import arcadia must not eagerly import arcadia.events."""
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "import arcadia; import sys; print('arcadia.events' in sys.modules)",
+        ],
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    assert result.returncode == 0, f"subprocess failed: {result.stderr}"
+    assert result.stdout.strip() == "False", "arcadia.events was eagerly imported"
+
+
 def test_config_imports_no_heavy_or_future_modules() -> None:
     """arcadia.config must not import heavy libraries or future runtime modules."""
     forbidden = [

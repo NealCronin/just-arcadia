@@ -17,6 +17,7 @@ from arcadia.events import (
     InMemoryEventSink,
     SinkFailure,
     exception_event,
+    make_event,
 )
 from arcadia.models import ArcadiaError, ArcadiaErrorInfo
 
@@ -30,6 +31,11 @@ def event(**overrides: object) -> ArcadiaEvent:
     }
     values.update(overrides)
     return ArcadiaEvent.model_validate(values)
+
+
+def test_make_event_defaults_to_info() -> None:
+    created = make_event(kind="test.started", source="test", message="started")
+    assert created.level is EventLevel.INFO
 
 
 def test_defaults_and_timestamp_normalization() -> None:

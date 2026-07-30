@@ -16,9 +16,9 @@ __all__ = ["make_event", "exception_event", "dumps_event", "loads_event"]
 def make_event(
     *,
     kind: str,
-    level: EventLevel,
     source: str,
     message: str,
+    level: EventLevel = EventLevel.INFO,
     data: dict[str, Any] | None = None,
     event_id: str | None = None,
     timestamp: datetime | None = None,
