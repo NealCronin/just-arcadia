@@ -237,16 +237,17 @@ class SystemHardwareDetector:
                 memory = _memory_from_sysconf()
             if operating_system == OperatingSystem.MACOS:
                 physical_text = self._macos_value("hw.physicalcpu")
-                if physical_text is not None and physical_text.isdigit():
-                    physical_cores = int(physical_text)
-                else:
+                physical_cores = int(physical_text) if physical_text is not None and physical_text.isdigit() else None
+                if physical_cores is None or physical_cores < 1:
+                    physical_cores = None
                     notes.append("macOS physical CPU probe unavailable")
                 model_value = self._macos_value("machdep.cpu.brand_string")
                 apple_gpu_name = model_value
                 cpu_model = model_value or cpu_model
                 memory_text = self._macos_value("hw.memsize")
-                if memory_text is not None and memory_text.isdigit():
-                    memory = MemoryInfo(total_bytes=int(memory_text), available_bytes=memory.available_bytes)
+                memory_total = int(memory_text) if memory_text is not None and memory_text.isdigit() else None
+                if memory_total is not None and memory_total > 0:
+                    memory = MemoryInfo(total_bytes=memory_total, available_bytes=memory.available_bytes)
                 elif memory.total_bytes is None:
                     notes.append("macOS memory probe unavailable")
             if physical_cores is not None and physical_cores > logical_cores:

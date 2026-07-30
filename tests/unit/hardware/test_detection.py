@@ -1,3 +1,4 @@
+import ctypes
 import subprocess
 from datetime import UTC
 
@@ -179,6 +180,48 @@ def test_windows_memory_probe_failure_is_a_note(monkeypatch: pytest.MonkeyPatch)
     assert "Windows memory probe unavailable" in caps.notes
 
 
+@pytest.mark.parametrize("api_result", [True, False])
+def test_windows_memory_ctypes_wrapper_configures_and_checks_api(
+    monkeypatch: pytest.MonkeyPatch, api_result: bool
+) -> None:
+    class FakeGlobalMemoryStatusEx:
+        argtypes: object
+        restype: object
+
+        def __init__(self) -> None:
+            self.status_type: type[ctypes.Structure] | None = None
+            self.dw_length: int | None = None
+
+        def __call__(self, pointer: object) -> bool:
+            status = pointer._obj
+            self.status_type = type(status)
+            self.dw_length = int(status.dwLength)
+            if api_result:
+                status.ullTotalPhys = 100
+                status.ullAvailPhys = 40
+            return api_result
+
+    class FakeKernel32:
+        def __init__(self, function: FakeGlobalMemoryStatusEx) -> None:
+            self.GlobalMemoryStatusEx = function
+
+    class FakeWinDll:
+        def __init__(self, function: FakeGlobalMemoryStatusEx) -> None:
+            self.kernel32 = FakeKernel32(function)
+
+    function = FakeGlobalMemoryStatusEx()
+    monkeypatch.setattr(detection.ctypes, "windll", FakeWinDll(function), raising=False)
+    if api_result:
+        assert detection._windows_memory() == detection.MemoryInfo(total_bytes=100, available_bytes=40)
+        assert function.status_type is not None
+        assert function.dw_length == ctypes.sizeof(function.status_type)
+        assert function.argtypes == [ctypes.POINTER(function.status_type)]
+        assert function.restype == detection.wintypes.BOOL
+    else:
+        with pytest.raises(OSError, match="GlobalMemoryStatusEx failed"):
+            detection._windows_memory()
+
+
 def test_apple_silicon_reports_metal_with_fallback_name(monkeypatch: pytest.MonkeyPatch) -> None:
     detector = SystemHardwareDetector()
     monkeypatch.setattr(detection.platform_module, "system", lambda: "Darwin")
@@ -192,6 +235,29 @@ def test_apple_silicon_reports_metal_with_fallback_name(monkeypatch: pytest.Monk
     caps = detector.detect()
     assert caps.platform.operating_system == OperatingSystem.MACOS
     assert caps.accelerators == (AcceleratorInfo(kind=DeviceKind.METAL, index=0, name="Apple Silicon GPU"),)
+
+
+def test_macos_zero_optional_probes_are_omitted_with_notes(monkeypatch: pytest.MonkeyPatch) -> None:
+    detector = SystemHardwareDetector()
+    monkeypatch.setattr(detection.platform_module, "system", lambda: "Darwin")
+    monkeypatch.setattr(detection.platform_module, "machine", lambda: "arm64")
+    monkeypatch.setattr(detection.platform_module, "processor", lambda: "")
+    monkeypatch.setattr(detection.platform_module, "release", lambda: "release")
+    monkeypatch.setattr(detection.platform_module, "version", lambda: "version")
+    monkeypatch.setattr(detection.platform_module, "python_version", lambda: "3.11")
+    monkeypatch.setattr(detection.os, "cpu_count", lambda: 4)
+    monkeypatch.setattr(detection, "_memory_from_sysconf", lambda: detection.MemoryInfo())
+    monkeypatch.setattr(
+        detector,
+        "_macos_value",
+        lambda key: {"hw.physicalcpu": "0", "machdep.cpu.brand_string": None, "hw.memsize": "0"}[key],
+    )
+    monkeypatch.setattr(detector, "_detect_cuda", lambda: ((), None))
+    caps = detector.detect()
+    assert caps.cpu.physical_cores is None
+    assert caps.memory == detection.MemoryInfo()
+    assert "macOS physical CPU probe unavailable" in caps.notes
+    assert "macOS memory probe unavailable" in caps.notes
 
 
 def test_invalid_cpu_count_uses_one_and_intel_mac_has_no_metal(monkeypatch: pytest.MonkeyPatch) -> None:

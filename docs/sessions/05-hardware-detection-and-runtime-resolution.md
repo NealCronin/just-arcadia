@@ -574,11 +574,11 @@ Completed:
 - `ruff format --check .` — 72 files already formatted.
 - `ruff check .` — success.
 - `mypy src/arcadia` — success.
-- `pytest` — 464 passed.
+- `pytest` — 467 passed.
 - `python -m build` — sdist and wheel built successfully.
 - Clean-wheel smoke test in `/tmp/arcadia-wheel-smoke-05` — installed the wheel, detected local hardware, validated the CPU/device and JSON round-trip invariants, and exercised CPU runtime resolution using synthetic hardware.
 
-Simulated unit coverage exercises Linux CPU/memory, Windows-memory failure, Apple Silicon Metal and fallback name, Intel macOS exclusion, CUDA CSV ordering/comma names/MiB conversion, empty/nonzero/unsupported/malformed/failed CUDA probes, finite timeout validation, direct `shell=False` command invocation, repeated detached detection, partial snapshots, detached custom detectors, and resolution outcomes. No manual CUDA-host validation was performed.
+Simulated unit coverage exercises Linux CPU/memory, Windows-memory failures and the typed `GlobalMemoryStatusEx` wrapper, Apple Silicon Metal and fallback name, zero-value macOS optional probes, Intel macOS exclusion, CUDA CSV ordering/comma names/MiB conversion, empty/nonzero/unsupported/malformed/failed CUDA probes, finite timeout validation, direct `shell=False` command invocation, repeated detached detection, partial snapshots, detached custom detectors, and resolution outcomes. No manual CUDA-host validation was performed.
 
 ## Decisions and deviations
 
