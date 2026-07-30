@@ -1,6 +1,6 @@
 # Session 05: Hardware Detection and Runtime Resolution
 
-- Status: in-progress
+- Status: completed
 - Branch: `session/05-hardware-runtime`
 - Owner: local agent session
 - Module: `arcadia.hardware`
@@ -166,11 +166,13 @@ Use Pydantic 2 models with `extra="forbid"`, `frozen=True`, and `validate_defaul
 ```python
 HARDWARE_SCHEMA_VERSION = 1
 
+
 class OperatingSystem(StrEnum):
     LINUX = "linux"
     WINDOWS = "windows"
     MACOS = "macos"
     OTHER = "other"
+
 
 class DeviceKind(StrEnum):
     CPU = "cpu"
@@ -190,15 +192,18 @@ class PlatformInfo:
     machine: str
     python_version: str
 
+
 class CpuInfo:
     logical_cores: int
     physical_cores: int | None = None
     architecture: str
     model: str | None = None
 
+
 class MemoryInfo:
     total_bytes: int | None = None
     available_bytes: int | None = None
+
 
 class AcceleratorInfo:
     kind: Literal[DeviceKind.CUDA, DeviceKind.METAL]
@@ -209,6 +214,7 @@ class AcceleratorInfo:
     driver_version: str | None = None
     identifier: str | None = None
     details: dict[str, JsonValue] = {}
+
 
 class HardwareCapabilities:
     schema_version: int = HARDWARE_SCHEMA_VERSION
@@ -245,9 +251,11 @@ Do **not** add `available_backends`: hardware detection cannot prove that an inf
 class HardwareDetector(Protocol):
     def detect(self) -> HardwareCapabilities: ...
 
+
 class SystemHardwareDetector:
     def __init__(self, *, command_timeout_seconds: float = 5.0) -> None: ...
     def detect(self) -> HardwareCapabilities: ...
+
 
 def detect_hardware(
     detector: HardwareDetector | None = None,
@@ -491,22 +499,22 @@ Never claim an unexecuted command passed. Record OS-specific simulated coverage 
 
 ## Definition of done
 
-- [ ] Required exports exist; root import stays lightweight.
-- [ ] No runtime dependency is added.
-- [ ] Models validate and round-trip.
-- [ ] Detection is bounded, read-only, best-effort, and standard-library only.
-- [ ] CPU, memory, CUDA, and Apple Silicon paths have simulated tests.
-- [ ] Optional probe failure preserves a useful partial snapshot.
-- [ ] Import and construction perform no probing.
-- [ ] Resolution is deterministic and never mutates inputs.
-- [ ] Auto selection follows CUDA, Metal, CPU.
-- [ ] Explicit unavailable devices/indexes fail with stable typed errors.
-- [ ] Unknown advanced settings pass through unchanged.
-- [ ] No fit or installed-backend claims are made.
-- [ ] Hardware and resolved settings persist through Session 04 contracts.
-- [ ] Ruff, mypy, pytest, build, and clean-wheel validation pass.
-- [ ] This file contains an honest completion record.
-- [ ] Session index is updated only after completion.
+- [x] Required exports exist; root import stays lightweight.
+- [x] No runtime dependency is added.
+- [x] Models validate and round-trip.
+- [x] Detection is bounded, read-only, best-effort, and standard-library only.
+- [x] CPU, memory, CUDA, and Apple Silicon paths have simulated tests.
+- [x] Optional probe failure preserves a useful partial snapshot.
+- [x] Import and construction perform no probing.
+- [x] Resolution is deterministic and never mutates inputs.
+- [x] Auto selection follows CUDA, Metal, CPU.
+- [x] Explicit unavailable devices/indexes fail with stable typed errors.
+- [x] Unknown advanced settings pass through unchanged.
+- [x] No fit or installed-backend claims are made.
+- [x] Hardware and resolved settings persist through Session 04 contracts.
+- [x] Ruff, mypy, pytest, build, and clean-wheel validation pass.
+- [x] This file contains an honest completion record.
+- [x] Session index is updated only after completion.
 
 ## Stop conditions
 
@@ -522,40 +530,68 @@ The implementation agent fills this section before stopping and changes the top 
 
 ## Outcome
 
-Not yet implemented.
+Completed. `arcadia.hardware` provides validated, versioned hardware snapshots; bounded standard-library system detection; and pure runtime-device resolution for the existing service specifications.
 
 ## Files changed
 
-Not yet implemented.
+- `src/arcadia/hardware/__init__.py`
+- `src/arcadia/hardware/errors.py`
+- `src/arcadia/hardware/models.py`
+- `src/arcadia/hardware/detection.py`
+- `src/arcadia/hardware/resolution.py`
+- `tests/unit/hardware/__init__.py`
+- `tests/unit/hardware/test_models.py`
+- `tests/unit/hardware/test_detection.py`
+- `tests/unit/hardware/test_resolution.py`
+- `tests/contract/test_hardware_serialization.py`
+- `tests/integration/test_hardware_storage.py`
+- `tests/test_package.py`
+- `docs/sessions/05-hardware-detection-and-runtime-resolution.md`
+- `docs/sessions/README.md`
 
 ## Delivered public API
 
-Not yet implemented.
+`arcadia.hardware` exports `HARDWARE_SCHEMA_VERSION`, the operating-system/device enums, all hardware snapshot models, detector protocol and system detector, typed hardware errors, `detect_hardware`, and `resolve_runtime_settings`. `arcadia` does not re-export or import this module eagerly.
 
 ## State and side effects
 
-Not yet implemented.
+Models and resolution are pure, immutable value operations. `SystemHardwareDetector.detect()` performs bounded read-only platform inspection and direct `nvidia-smi`/`sysctl` probes only when called; it caches nothing, allocates no GPU resources, starts no service, and performs no network I/O.
 
 ## Errors and events
 
-Not yet implemented.
+All public failures derive from `ArcadiaError`. Detection translates invalid custom snapshots and probe failures to `HardwareDetectionError`; resolution uses `RuntimeResolutionError` with stable invalid-setting, reserved-setting, unavailable-device, and unavailable-index codes. This module emits no events.
 
 ## Tests and validation
 
-Not yet implemented. List every command actually run and its exact result. Separate simulated platform coverage from manual CUDA or Apple Silicon hardware testing.
+Baseline:
+
+- `python -m pip install -e ".[dev]"` — success.
+- Initial `ruff format --check .` — reported this new session document as the only file requiring formatting; it was formatted before implementation validation.
+
+Completed:
+
+- Focused validation: `ruff format --check src/arcadia/hardware tests/unit/hardware tests/contract/test_hardware_serialization.py tests/integration/test_hardware_storage.py tests/test_package.py && ruff check src/arcadia/hardware tests/unit/hardware tests/contract/test_hardware_serialization.py tests/integration/test_hardware_storage.py tests/test_package.py && mypy src/arcadia && pytest tests/unit/hardware tests/contract/test_hardware_serialization.py tests/integration/test_hardware_storage.py tests/test_package.py` — 42 passed.
+- `ruff format --check .` — 72 files already formatted.
+- `ruff check .` — success.
+- `mypy src/arcadia` — success.
+- `pytest` — 453 passed.
+- `python -m build` — sdist and wheel built successfully.
+- Clean-wheel smoke test in `/tmp/arcadia-wheel-smoke-05` — installed the wheel, detected local hardware, validated the CPU/device and JSON round-trip invariants, and exercised CPU runtime resolution using synthetic hardware.
+
+Simulated unit coverage exercises Linux CPU/memory, Windows-memory failure, Apple Silicon Metal and fallback name, Intel macOS exclusion, CUDA CSV ordering/comma names/MiB conversion, malformed and failed CUDA probes, partial snapshots, detached custom detectors, and resolution outcomes. No manual CUDA-host validation was performed.
 
 ## Decisions and deviations
 
-Not yet implemented.
+No earlier public contract changed and no runtime dependency was added. Hardware reports visible execution devices only; it intentionally does not claim inference backend installation, compilation compatibility, model fit, or GPU allocation capability.
 
 ## Known limitations
 
-Not yet implemented.
+Detection is intentionally limited to CPU, NVIDIA CUDA through `nvidia-smi`, and Apple Silicon Metal. It does not discover AMD, Intel, or other accelerators, infer cgroup limits, or prove future backend availability.
 
 ## Assumptions and risks
 
-Not yet implemented.
+Available-memory observations can differ across calls. NVIDIA visibility and Apple Silicon classification indicate an execution target candidate, not an installed or compatible inference backend.
 
 ## Next-session prerequisites
 
-Not yet implemented.
+Sessions 06–08 can consume immutable `HardwareCapabilities` snapshots and `ResolvedRuntimeSettings`; callers retain responsibility for persisting snapshots and determining backend readiness or model fit.

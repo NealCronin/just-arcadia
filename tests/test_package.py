@@ -206,3 +206,43 @@ def test_storage_imports_no_forbidden_runtime_modules() -> None:
     )
     assert result.returncode == 0, f"subprocess failed: {result.stderr}"
     assert result.stdout.strip() == "[]", f"forbidden modules were imported: {result.stdout}"
+
+
+def test_import_arcadia_does_not_import_hardware() -> None:
+    """import arcadia must not eagerly import arcadia.hardware."""
+    result = subprocess.run(
+        [sys.executable, "-c", "import arcadia; import sys; print('arcadia.hardware' in sys.modules)"],
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    assert result.returncode == 0, f"subprocess failed: {result.stderr}"
+    assert result.stdout.strip() == "False", "arcadia.hardware was eagerly imported"
+
+
+def test_hardware_imports_no_forbidden_modules_or_probes() -> None:
+    """Hardware import stays isolated and performs no subprocess probe."""
+    forbidden = [
+        "arcadia.config",
+        "arcadia.events",
+        "arcadia.storage",
+        "arcadia.services",
+        "arcadia.backends",
+        "arcadia.transport",
+        "arcadia.inference",
+        "arcadia.tools",
+        "arcadia.analysis",
+        "arcadia.cli",
+        "torch",
+        "llama_cpp",
+        "mlx",
+    ]
+    command = (
+        "import subprocess; "
+        "subprocess.run = lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError('probe')); "
+        "import arcadia.hardware; import sys; "
+        f"print([m for m in {forbidden!r} if m in sys.modules])"
+    )
+    result = subprocess.run([sys.executable, "-c", command], capture_output=True, text=True, timeout=60)
+    assert result.returncode == 0, f"subprocess failed: {result.stderr}"
+    assert result.stdout.strip() == "[]", f"forbidden modules were imported: {result.stdout}"
