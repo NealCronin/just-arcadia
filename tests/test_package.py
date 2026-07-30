@@ -118,3 +118,31 @@ def test_config_imports_no_heavy_or_future_modules() -> None:
     )
     assert result.returncode == 0, f"subprocess failed: {result.stderr}"
     assert result.stdout.strip() == "[]", f"future modules were imported: {result.stdout}"
+
+
+def test_events_imports_no_forbidden_runtime_modules() -> None:
+    """Importing arcadia.events stays below the runtime module layers."""
+    forbidden = [
+        "arcadia.config",
+        "arcadia.storage",
+        "arcadia.hardware",
+        "arcadia.services",
+        "arcadia.backends",
+        "arcadia.transport",
+        "arcadia.inference",
+        "arcadia.analysis",
+        "arcadia.tools",
+        "arcadia.cli",
+    ]
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            f"import arcadia.events; import sys; print([m for m in {forbidden!r} if m in sys.modules])",
+        ],
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    assert result.returncode == 0, f"subprocess failed: {result.stderr}"
+    assert result.stdout.strip() == "[]", f"forbidden modules were imported: {result.stdout}"
