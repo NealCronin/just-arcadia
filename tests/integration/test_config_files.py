@@ -237,6 +237,25 @@ class TestFailureInjection:
         # Original file should still be intact
         assert config_path.read_bytes() == original_content
 
+    def test_partial_writes_are_completed(self, tmp_path: Path, monkeypatch: Any) -> None:
+        """A successful short os.write result must be followed by more writes."""
+        config_path = tmp_path / "config.json"
+        real_write = os.write
+        write_calls = 0
+
+        def partial_write(fd: int, data: bytes) -> int:
+            nonlocal write_calls
+            write_calls += 1
+            return real_write(fd, data[:1])
+
+        monkeypatch.setattr(os, "write", partial_write)
+
+        expected = ArcadiaConfig()
+        save_config(expected, config_path)
+
+        assert write_calls > 1
+        assert load_config(config_path) == expected
+
     def test_replace_failure_preserves_existing(self, tmp_path: Path, monkeypatch: Any) -> None:
         """Simulated os.replace failure must not destroy the existing file."""
         config_path = tmp_path / "config.json"

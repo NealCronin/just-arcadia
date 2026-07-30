@@ -208,7 +208,13 @@ def save_config(config: ArcadiaConfig, path: str | os.PathLike[str]) -> None:
         temp_path = Path(temp_str)
 
         try:
-            os.write(fd, content.encode("utf-8"))
+            payload = content.encode("utf-8")
+            offset = 0
+            while offset < len(payload):
+                written = os.write(fd, payload[offset:])
+                if written <= 0:
+                    raise OSError("temporary configuration write made no progress")
+                offset += written
             os.fsync(fd)
         finally:
             os.close(fd)

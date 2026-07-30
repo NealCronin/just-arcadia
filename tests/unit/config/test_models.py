@@ -86,6 +86,21 @@ class TestNodeValidation:
             address={"host": "192.168.1.10", "instruction_port": 8000},
         )
         assert node.kind == NodeKind.REMOTE
+
+    def test_address_rejects_arbitrary_object(self) -> None:
+        class FakeAddress:
+            host = "localhost"
+            instruction_port = 8000
+
+        with pytest.raises(ValidationError):
+            NodeConfig(kind=NodeKind.REMOTE, address=FakeAddress())
+
+    def test_address_is_node_address(self) -> None:
+        node = NodeConfig(
+            kind=NodeKind.REMOTE,
+            address={"host": "localhost", "instruction_port": 8000},
+        )
+        assert type(node.address).__name__ == "NodeAddress"
         assert node.address is not None
 
     def test_remote_node_requires_address(self) -> None:
@@ -142,6 +157,7 @@ class TestLocalNodeLimit:
                 }
             }
         )
+
         assert len(config.nodes) == 1
 
     def test_two_local_nodes_rejected(self) -> None:
@@ -164,6 +180,102 @@ class TestLocalNodeLimit:
             }
         )
         assert len(config.nodes) == 2
+
+
+class TestNamedMappingKeys:
+    def test_non_string_node_key_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="node name must be a string"):
+            ArcadiaConfig.model_validate({"nodes": {1: {"kind": "local"}}})
+
+    def test_trimmed_node_key_collision_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="duplicate normalized node name"):
+            ArcadiaConfig.model_validate(
+                {
+                    "nodes": {
+                        "local": {"kind": "local"},
+                        " local ": {"kind": "remote", "address": {"host": "host", "instruction_port": 8000}},
+                    }
+                }
+            )
+
+    def test_non_string_service_profile_key_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="service profile name must be a string"):
+            ArcadiaConfig.model_validate(
+                {
+                    "nodes": {"local": {"kind": "local"}},
+                    "service_profiles": {
+                        1: {
+                            "node": "local",
+                            "spec": {
+                                "service_type": "sam3",
+                                "port": 8000,
+                                "checkpoint_path": "checkpoint.pt",
+                            },
+                        }
+                    },
+                }
+            )
+
+    def test_trimmed_service_profile_key_collision_rejected(self) -> None:
+        profile = {
+            "node": "local",
+            "spec": {
+                "service_type": "sam3",
+                "port": 8000,
+                "checkpoint_path": "checkpoint.pt",
+            },
+        }
+        with pytest.raises(ValidationError, match="duplicate normalized service profile name"):
+            ArcadiaConfig.model_validate(
+                {
+                    "nodes": {"local": {"kind": "local"}},
+                    "service_profiles": {"profile": profile, " profile ": profile},
+                }
+            )
+
+    def test_non_string_tool_profile_key_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="tool profile name must be a string"):
+            ArcadiaConfig.model_validate({"tool_profiles": {1: {"tool_name": "tool"}}})
+
+    def test_trimmed_tool_profile_key_collision_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="duplicate normalized tool profile name"):
+            ArcadiaConfig.model_validate(
+                {
+                    "tool_profiles": {
+                        "tool": {"tool_name": "tool"},
+                        " tool ": {"tool_name": "other"},
+                    }
+                }
+            )
+
+    def test_non_string_stage_key_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="stage name must be a string"):
+            ArcadiaConfig.model_validate(
+                {
+                    "tool_profiles": {
+                        "tool": {
+                            "tool_name": "tool",
+                            "stages": {1: {"service_profile": "profile"}},
+                        }
+                    }
+                }
+            )
+
+    def test_trimmed_stage_key_collision_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="duplicate normalized stage name"):
+            ArcadiaConfig.model_validate(
+                {
+                    "tool_profiles": {
+                        "tool": {
+                            "tool_name": "tool",
+                            "stages": {
+                                "stage": {"service_profile": "profile"},
+                                " stage ": {"service_profile": "profile"},
+                            },
+                        }
+                    }
+                }
+            )
 
 
 # ---------------------------------------------------------------------------

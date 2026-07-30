@@ -490,15 +490,15 @@ Session 02 is complete. The `arcadia.config` package implements the full JSON co
 ## Files changed
 
 ### Source
-- `src/arcadia/config/__init__.py` — public re-export surface (13 symbols)
+- `src/arcadia/config/__init__.py` — public re-export surface (14 symbols)
 - `src/arcadia/config/models.py` — CONFIG_SCHEMA_VERSION, NodeKind, NodeConfig, ServiceProfile, StageBinding, ToolProfile, RetryPolicy, OutputSettings, ArcadiaConfig with cross-reference validation
 - `src/arcadia/config/files.py` — load_config, loads_config, save_config, dumps_config, snapshot_config with typed ConfigurationError codes
 
 ### Tests
 - `tests/unit/config/__init__.py` — test package marker
-- `tests/unit/config/test_models.py` — model validation (default config, node rules, one-local-node limit, name trimming, LLM/visual-LLM/SAM profiles, reference validation, profile reuse, extensions, unknown field rejection, retry boundaries, output validation, schema version)
+- `tests/unit/config/test_models.py` — model validation (default config, node rules, one-local-node limit, name trimming, LLM/visual-LLM/SAM profiles, reference validation, profile reuse, extensions, unknown field rejection, retry boundaries, output validation, schema version, typed addresses, non-string keys, and normalized-key collisions)
 - `tests/unit/config/test_serialization.py` — serialization (loads, malformed JSON, non-object roots, validation conversion, deterministic formatting, Unicode, trailing newline, load/dump/load equality, snapshot detachment)
-- `tests/integration/test_config_files.py` — file I/O (missing/undecodable files, round trip, parent creation, non-mutating loads, atomic replacement, write/replace failure injection, temp cleanup, typed error codes, no POSIX-only assumptions)
+- `tests/integration/test_config_files.py` — file I/O (missing/undecodable files, round trip, parent creation, non-mutating loads, atomic replacement, complete handling of partial writes, write/replace failure injection, temp cleanup, typed error codes, no POSIX-only assumptions)
 - `tests/test_package.py` — added `test_import_arcadia_does_not_import_config` and `test_config_imports_no_heavy_or_future_modules`
 
 ### Documentation
@@ -507,14 +507,14 @@ Session 02 is complete. The `arcadia.config` package implements the full JSON co
 
 ## Delivered public API
 
-`from arcadia.config import ...` exposes all 13 required symbols:
+`from arcadia.config import ...` exposes all 14 required symbols:
 CONFIG_SCHEMA_VERSION, NodeKind, NodeConfig, ServiceProfile, StageBinding, ToolProfile, RetryPolicy, OutputSettings, ArcadiaConfig, load_config, loads_config, save_config, dumps_config, snapshot_config.
 
 The root `arcadia` package does NOT re-export these — `arcadia.config` must be imported explicitly.
 
 ## Configuration schema delivered
 
-Root fields: `schema_version` (Literal[1], defaults to 1), `nodes` (dict[str, NodeConfig]), `service_profiles` (dict[str, ServiceProfile]), `tool_profiles` (dict[str, ToolProfile]), `retry` (RetryPolicy), `output` (OutputSettings), `extensions` (dict[str, JsonValue]).
+Root fields: `schema_version` (validated int, defaults to 1), `nodes` (dict[str, NodeConfig]), `service_profiles` (dict[str, ServiceProfile]), `tool_profiles` (dict[str, ToolProfile]), `retry` (RetryPolicy), `output` (OutputSettings), `extensions` (dict[str, JsonValue]).
 
 Profile types: NodeConfig (kind/address/description/extensions), ServiceProfile (node/spec/description/extensions), StageBinding (service_profile/extensions), ToolProfile (tool_name/stages/settings/description/extensions).
 
@@ -524,7 +524,7 @@ Version behavior: missing version defaults to 1; any other version raises Config
 
 ## State and side effects
 
-The `arcadia.config` module owns no global active configuration or singleton store. The only side effects are explicit reads and writes from `load_config()` and `save_config()`. `save_config` uses atomic replacement: serialize first, create parent directories, write to a temp file in the destination directory, fsync, then `os.replace`. On failure, the temp file is cleaned up and the existing destination is left unchanged. `load_config` never writes. `snapshot_config` performs no I/O.
+The `arcadia.config` module owns no global active configuration or singleton store. The only side effects are explicit reads and writes from `load_config()` and `save_config()`. `save_config` uses atomic replacement: serialize first, create parent directories, write all UTF-8 payload bytes to a temp file in the destination directory (looping across short writes), fsync, then `os.replace`. On failure, the temp file is cleaned up and the existing destination is left unchanged. `load_config` never writes. `snapshot_config` performs no I/O.
 
 ## Errors and events
 
@@ -537,7 +537,7 @@ All definition-of-done checks pass:
 - `ruff format --check .` — 40 files already formatted
 - `ruff check .` — all checks passed
 - `mypy src/arcadia` — no issues found in 10 source files
-- `pytest` — 324 passed
+- `pytest` — 335 passed
 - `python -m build` — built wheel and sdist
 - Clean-venv wheel install + `import arcadia; from arcadia.config import ArcadiaConfig, dumps_config, loads_config; config = ArcadiaConfig(); assert loads_config(dumps_config(config)) == config` — success
 
@@ -548,7 +548,10 @@ No deviations from the session contract. All required exports, rules, and valida
 Implementation decisions (within the specified choices):
 - `schema_version` uses `int` type with a before-validator rather than `Literal[1]` so that unsupported versions raise `ConfigurationError` with `config_unsupported_version` code instead of a generic Pydantic `literal_error`.
 - Boolean rejection for numeric fields uses `mode="before"` validators to catch booleans before Pydantic coerces them to integers.
-- `ServiceProfile.spec` accepts both dict mappings (parsed via `parse_service_spec`) and already-parsed `ServiceSpec` instances.
+- `ServiceProfile.spec` accepts dict mappings parsed by the public `parse_service_spec` API and already-parsed `ServiceSpec` instances.
+- `NodeConfig.address` is explicitly typed as public `NodeAddress | None`; arbitrary duck-typed address objects are rejected.
+- Named mapping keys require strings, are trimmed and control-checked, and reject normalized-name collisions instead of silently overwriting entries.
+- All mutable mapping defaults use `Field(default_factory=dict)`.
 
 ## Known limitations
 

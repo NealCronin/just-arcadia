@@ -14,11 +14,10 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from arcadia.models import ConfigurationError
-from arcadia.models.services import (
-    SamServiceSpec,
+from arcadia.models import (
+    ConfigurationError,
+    NodeAddress,
     ServiceSpec,
-    parse_service_spec,
 )
 
 __all__ = [
@@ -76,7 +75,12 @@ def _deep_copy_json(value: Any) -> Any:
     if isinstance(value, list):
         return [_deep_copy_json(item) for item in value]
     if isinstance(value, dict):
-        return {str(k): _deep_copy_json(v) for k, v in value.items()}
+        result: dict[str, Any] = {}
+        for key, item in value.items():
+            if not isinstance(key, str):
+                raise ValueError("mapping keys must be strings")
+            result[key] = _deep_copy_json(item)
+        return result
     raise ValueError(f"value is not JSON-compatible: {type(value).__name__}")
 
 
@@ -84,9 +88,11 @@ def _validate_json_mapping(value: Any) -> dict[str, Any]:
     """Validate a JSON-compatible mapping and return a defensive copy."""
     if not isinstance(value, dict):
         raise ValueError(f"expected a mapping, got {type(value).__name__}")
+    if not all(isinstance(key, str) for key in value):
+        raise ValueError("mapping keys must be strings")
     if not _is_json_value(value):
         raise ValueError("mapping contains non-JSON-compatible values")
-    return {str(k): _deep_copy_json(v) for k, v in value.items()}
+    return {key: _deep_copy_json(item) for key, item in value.items()}
 
 
 # ---------------------------------------------------------------------------
@@ -102,6 +108,13 @@ def _validate_name(name: str, field_name: str) -> str:
     if any(c in _NAME_CONTROLS for c in stripped):
         raise ValueError(f"{field_name} must not contain control characters")
     return stripped
+
+
+def _normalize_mapping_key(key: Any, field_name: str) -> str:
+    """Require and normalize a named mapping key."""
+    if not isinstance(key, str):
+        raise ValueError(f"{field_name} must be a string")
+    return _validate_name(key, field_name)
 
 
 def _validate_description(value: str) -> str:
@@ -143,9 +156,9 @@ class NodeConfig(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True, validate_default=True)
 
     kind: NodeKind
-    address: Any = None  # NodeAddress | None — validated below
+    address: NodeAddress | None = None
     description: str = ""
-    extensions: dict[str, Any] = {}
+    extensions: dict[str, Any] = Field(default_factory=dict)
 
     @field_validator("description")
     @classmethod
@@ -156,21 +169,6 @@ class NodeConfig(BaseModel):
     @classmethod
     def _validate_extensions(cls, value: Any) -> dict[str, Any]:
         return _validate_json_mapping(value)
-
-    @field_validator("address")
-    @classmethod
-    def _validate_address_type(cls, value: Any) -> Any:
-        """Type-check address; kind-specific validation is in ArcadiaConfig."""
-        if value is None:
-            return None
-        # Accept dict (will be parsed) or NodeAddress-like object
-        from arcadia.models import NodeAddress
-
-        if isinstance(value, dict):
-            return NodeAddress.model_validate(value)
-        if hasattr(value, "host") and hasattr(value, "instruction_port"):
-            return value
-        raise ValueError("address must be a NodeAddress or a mapping with host and instruction_port")
 
     @model_validator(mode="after")
     def _validate_kind_address(self) -> NodeConfig:
@@ -194,7 +192,7 @@ class ServiceProfile(BaseModel):
     node: str
     spec: ServiceSpec
     description: str = ""
-    extensions: dict[str, Any] = {}
+    extensions: dict[str, Any] = Field(default_factory=dict)
 
     @field_validator("node")
     @classmethod
@@ -211,19 +209,6 @@ class ServiceProfile(BaseModel):
     def _validate_extensions(cls, value: Any) -> dict[str, Any]:
         return _validate_json_mapping(value)
 
-    @field_validator("spec")
-    @classmethod
-    def _validate_spec(cls, value: Any) -> ServiceSpec:
-        if isinstance(value, dict):
-            return parse_service_spec(value)
-        # Accept already-parsed specs
-        if isinstance(value, (SamServiceSpec,)):
-            return value
-        # Check for LlamaServiceSpec via service_type attribute
-        if hasattr(value, "service_type"):
-            return value  # type: ignore[no-any-return]
-        raise ValueError("spec must be a service specification mapping or model")
-
 
 # ---------------------------------------------------------------------------
 # StageBinding
@@ -236,7 +221,7 @@ class StageBinding(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True, validate_default=True)
 
     service_profile: str
-    extensions: dict[str, Any] = {}
+    extensions: dict[str, Any] = Field(default_factory=dict)
 
     @field_validator("service_profile")
     @classmethod
@@ -260,10 +245,10 @@ class ToolProfile(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True, validate_default=True)
 
     tool_name: str
-    stages: dict[str, StageBinding] = {}
-    settings: dict[str, Any] = {}
+    stages: dict[str, StageBinding] = Field(default_factory=dict)
+    settings: dict[str, Any] = Field(default_factory=dict)
     description: str = ""
-    extensions: dict[str, Any] = {}
+    extensions: dict[str, Any] = Field(default_factory=dict)
 
     @field_validator("tool_name")
     @classmethod
@@ -285,14 +270,16 @@ class ToolProfile(BaseModel):
     def _validate_extensions(cls, value: Any) -> dict[str, Any]:
         return _validate_json_mapping(value)
 
-    @field_validator("stages")
+    @field_validator("stages", mode="before")
     @classmethod
     def _validate_stages(cls, value: Any) -> dict[str, StageBinding]:
         if not isinstance(value, dict):
             raise ValueError("stages must be a mapping")
         result: dict[str, StageBinding] = {}
         for key, val in value.items():
-            stage_name = _validate_name(str(key), "stage name")
+            stage_name = _normalize_mapping_key(key, "stage name")
+            if stage_name in result:
+                raise ValueError(f"duplicate normalized stage name: {stage_name!r}")
             if isinstance(val, dict):
                 result[stage_name] = StageBinding.model_validate(val)
             elif isinstance(val, StageBinding):
@@ -374,7 +361,7 @@ class OutputSettings(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True, validate_default=True)
 
     root: str = "./outputs"
-    extensions: dict[str, Any] = {}
+    extensions: dict[str, Any] = Field(default_factory=dict)
 
     @field_validator("root")
     @classmethod
@@ -404,12 +391,12 @@ class ArcadiaConfig(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True, validate_default=True)
 
     schema_version: int = CONFIG_SCHEMA_VERSION
-    nodes: dict[str, NodeConfig] = {}
-    service_profiles: dict[str, ServiceProfile] = {}
-    tool_profiles: dict[str, ToolProfile] = {}
+    nodes: dict[str, NodeConfig] = Field(default_factory=dict)
+    service_profiles: dict[str, ServiceProfile] = Field(default_factory=dict)
+    tool_profiles: dict[str, ToolProfile] = Field(default_factory=dict)
     retry: RetryPolicy = Field(default_factory=RetryPolicy)
     output: OutputSettings = Field(default_factory=OutputSettings)
-    extensions: dict[str, Any] = {}
+    extensions: dict[str, Any] = Field(default_factory=dict)
 
     @field_validator("schema_version", mode="before")
     @classmethod
@@ -430,14 +417,16 @@ class ArcadiaConfig(BaseModel):
     def _validate_extensions(cls, value: Any) -> dict[str, Any]:
         return _validate_json_mapping(value)
 
-    @field_validator("nodes")
+    @field_validator("nodes", mode="before")
     @classmethod
     def _validate_nodes(cls, value: Any) -> dict[str, NodeConfig]:
         if not isinstance(value, dict):
             raise ValueError("nodes must be a mapping")
         result: dict[str, NodeConfig] = {}
         for key, val in value.items():
-            name = _validate_name(str(key), "node name")
+            name = _normalize_mapping_key(key, "node name")
+            if name in result:
+                raise ValueError(f"duplicate normalized node name: {name!r}")
             if isinstance(val, dict):
                 result[name] = NodeConfig.model_validate(val)
             elif isinstance(val, NodeConfig):
@@ -446,14 +435,16 @@ class ArcadiaConfig(BaseModel):
                 raise ValueError(f"node '{name}' must be a NodeConfig or mapping")
         return result
 
-    @field_validator("service_profiles")
+    @field_validator("service_profiles", mode="before")
     @classmethod
     def _validate_service_profiles(cls, value: Any) -> dict[str, ServiceProfile]:
         if not isinstance(value, dict):
             raise ValueError("service_profiles must be a mapping")
         result: dict[str, ServiceProfile] = {}
         for key, val in value.items():
-            name = _validate_name(str(key), "service profile name")
+            name = _normalize_mapping_key(key, "service profile name")
+            if name in result:
+                raise ValueError(f"duplicate normalized service profile name: {name!r}")
             if isinstance(val, dict):
                 result[name] = ServiceProfile.model_validate(val)
             elif isinstance(val, ServiceProfile):
@@ -462,14 +453,16 @@ class ArcadiaConfig(BaseModel):
                 raise ValueError(f"service profile '{name}' must be a ServiceProfile or mapping")
         return result
 
-    @field_validator("tool_profiles")
+    @field_validator("tool_profiles", mode="before")
     @classmethod
     def _validate_tool_profiles(cls, value: Any) -> dict[str, ToolProfile]:
         if not isinstance(value, dict):
             raise ValueError("tool_profiles must be a mapping")
         result: dict[str, ToolProfile] = {}
         for key, val in value.items():
-            name = _validate_name(str(key), "tool profile name")
+            name = _normalize_mapping_key(key, "tool profile name")
+            if name in result:
+                raise ValueError(f"duplicate normalized tool profile name: {name!r}")
             if isinstance(val, dict):
                 result[name] = ToolProfile.model_validate(val)
             elif isinstance(val, ToolProfile):
