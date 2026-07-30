@@ -12,7 +12,7 @@ from typing import Any
 
 import pytest
 
-from arcadia.events import EventEmitter
+from arcadia.events import EventEmitter, InMemoryEventSink
 from arcadia.hardware import CpuInfo, HardwareCapabilities, MemoryInfo, OperatingSystem, PlatformInfo
 from arcadia.models import (
     HuggingFaceFileSpec,
@@ -197,6 +197,56 @@ def test_replacement_changes_service_type_and_backend() -> None:
     assert len(sam.started) == 1
 
 
+def test_operation_and_progress_events_use_target_backend_identity() -> None:
+    class ReportingBackend(RecordingBackend):
+        def start(
+            self,
+            spec: ServiceSpec,
+            resolved_settings: ResolvedRuntimeSettings,
+            progress: BackendProgressReporter,
+        ) -> BackendInstance:
+            progress.report(state=ServiceState.STARTING, message="starting")
+            return super().start(spec, resolved_settings, progress)
+
+    sink = InMemoryEventSink()
+    llama = ReportingBackend("llama_cpp")
+    sam = ReportingBackend("sam3")
+    service_manager = make_manager(
+        {ServiceType.LLM: llama, ServiceType.SAM3: sam},
+        emitter=EventEmitter([sink]),
+    )
+    service_manager.ensure_service(spec(19026))
+    service_manager.ensure_service(SamServiceSpec(port=19026, checkpoint_path="checkpoint.pt"))
+
+    started = [event for event in sink.snapshot() if event.kind == "service.operation.started"]
+    progress_events = [event for event in sink.snapshot() if event.kind == "service.operation.progress"]
+    assert [event.data["backend_id"] for event in started] == ["llama_cpp", "sam3"]
+    assert [event.data["service_type"] for event in started] == ["llm", "sam3"]
+    assert [event.data["backend_id"] for event in progress_events] == ["llama_cpp", "sam3"]
+
+
+def test_failed_cross_backend_replacement_keeps_retained_instance_identity() -> None:
+    llama = RecordingBackend("llama_cpp")
+    sam = RecordingBackend("sam3")
+    sam.start_error = RuntimeError("SAM start failed")
+    service_manager = make_manager({ServiceType.LLM: llama, ServiceType.SAM3: sam})
+    service_manager.ensure_service(spec(19027))
+    sam_spec = SamServiceSpec(port=19027, checkpoint_path="checkpoint.pt")
+
+    with pytest.raises(ServiceStartupError):
+        service_manager.ensure_service(sam_spec)
+
+    status = service_manager.get_status(19027)
+    diagnostics = service_manager.get_diagnostics(19027)
+    logs = service_manager.get_logs(19027)
+    assert status.service_type == ServiceType.SAM3
+    assert diagnostics.service_type == ServiceType.LLM
+    assert diagnostics.backend_id == "llama_cpp"
+    assert logs.service_type == ServiceType.LLM
+    assert logs.backend_id == "llama_cpp"
+    assert logs.text == "generation-0\n"
+
+
 def test_invalid_returned_instance_is_stopped_before_rejection() -> None:
     class InvalidBackend(RecordingBackend):
         def start(
@@ -319,6 +369,7 @@ def test_operation_ids_are_trimmed_for_lookup_and_duplicate_detection() -> None:
 
     assert ready.operation_id == "operation-1"
     assert service_manager.get_operation("operation-1").operation_id == "operation-1"
+    assert service_manager.get_operation(" operation-1 ").operation_id == "operation-1"
     with pytest.raises(ServiceError) as duplicate:
         service_manager.ensure_service(spec(19019))
     assert duplicate.value.code == "service_operation_invalid"

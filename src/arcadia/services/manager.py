@@ -48,11 +48,13 @@ _RESERVED_DIAGNOSTIC_KEYS = frozenset({"port", "service_type", "state", "backend
 class _Slot:
     port: int
     service_type: ServiceType
+    target_backend_id: str | None
     state: ServiceState
     requested_spec: ServiceSpec | None
     resolved_settings: ResolvedRuntimeSettings | None
     backend: ServiceBackend | None
     backend_id: str | None
+    instance_service_type: ServiceType | None
     instance: BackendInstance | None
     endpoint: ServiceEndpoint | None
     error: ArcadiaErrorInfo | None
@@ -71,11 +73,16 @@ class _ProgressReporter:
         slot: _Slot,
         operation_id: str,
         allowed_states: frozenset[ServiceState],
+        *,
+        service_type: ServiceType,
+        backend_id: str,
     ) -> None:
         self._manager = manager
         self._slot = slot
         self._operation_id = operation_id
         self._allowed_states = allowed_states
+        self._service_type = service_type
+        self._backend_id = backend_id
 
     def report(self, *, state: ServiceState, progress: float | None = None, message: str = "") -> None:
         if state not in self._allowed_states:
@@ -97,6 +104,8 @@ class _ProgressReporter:
             self._slot,
             state=state,
             operation_id=self._operation_id,
+            event_service_type=self._service_type,
+            event_backend_id=self._backend_id,
             progress=None if progress is None else float(progress),
             message=message.strip(),
         )
@@ -107,8 +116,8 @@ class _ProgressReporter:
             operation_id=self._operation_id,
             data={
                 "port": self._slot.port,
-                "service_type": self._slot.service_type.value,
-                "backend_id": self._slot.backend_id or "",
+                "service_type": self._service_type.value,
+                "backend_id": self._backend_id,
                 "state": state.value,
                 "progress": progress,
             },
@@ -164,6 +173,7 @@ class ServiceManager:
         self._slots: dict[int, _Slot] = {}
         self._operations: list[OperationStatus] = []
         self._operation_by_id: dict[str, OperationStatus] = {}
+        self._operation_identities: dict[str, tuple[ServiceType, str]] = {}
         self._closing = False
         self._closed = False
         self._atexit_callback: Callable[[], None] | None = None
@@ -218,7 +228,15 @@ class ServiceManager:
             self._assert_lifecycle_open()
             if slot.state == ServiceState.READY and slot.requested_spec == requested:
                 return self._reuse_locked(slot)
-            operation_id = self._start_operation(slot)
+            target_backend = self._backends.get(requested.service_type)
+            target_backend_id = "" if target_backend is None else self._backend_id(target_backend)
+            with self._registry_lock:
+                slot.target_backend_id = target_backend_id or None
+            operation_id = self._start_operation(
+                slot,
+                service_type=requested.service_type,
+                backend_id=target_backend_id,
+            )
             self._emit_operation_started(slot, operation_id)
             if slot.instance is not None and slot.state != ServiceState.STOPPED:
                 try:
@@ -229,7 +247,13 @@ class ServiceManager:
                     self._finish_operation(slot, operation_id, error=error)
                     raise error from exc
             try:
-                return self._provision_locked(slot, requested, operation_id)
+                return self._provision_locked(
+                    slot,
+                    requested,
+                    target_backend,
+                    target_backend_id,
+                    operation_id,
+                )
             except BaseException as exc:
                 error = self._as_start_error(exc, slot, requested)
                 self._record_failure(slot, error, operation_id, requested_spec=requested)
@@ -309,8 +333,9 @@ class ServiceManager:
 
         if not isinstance(operation_id, str) or not operation_id.strip():
             raise ServiceError("operation ID is invalid", code="service_operation_not_found")
+        normalized_id = operation_id.strip()
         with self._registry_lock:
-            operation = self._operation_by_id.get(operation_id)
+            operation = self._operation_by_id.get(normalized_id)
         if operation is None:
             raise ServiceError("operation was not found", code="service_operation_not_found")
         return self._copy_operation(operation)
@@ -338,9 +363,9 @@ class ServiceManager:
             instance, backend = slot.instance, slot.backend
             port_value, service_type, state, backend_id, updated_at = (
                 slot.port,
-                slot.service_type,
+                (slot.instance_service_type or slot.service_type) if instance is not None else slot.service_type,
                 slot.state,
-                slot.backend_id or "unknown",
+                (slot.backend_id if instance is not None else slot.target_backend_id) or "unknown",
                 slot.updated_at,
             )
         details: dict[str, Any] = {}
@@ -395,7 +420,7 @@ class ServiceManager:
             instance, backend = slot.instance, slot.backend
             port_value, service_type, backend_id, updated_at = (
                 slot.port,
-                slot.service_type,
+                slot.instance_service_type or slot.service_type,
                 slot.backend_id or "unknown",
                 slot.updated_at,
             )
@@ -505,13 +530,19 @@ class ServiceManager:
             EventLevel.INFO,
             "healthy service reused",
             operation_id=operation_id,
-            data=self._slot_event_data(slot),
+            data=self._slot_event_data(slot, operation_id),
         )
         self._finish_operation(slot, operation_id)
         return self._status_snapshot(slot)
 
-    def _provision_locked(self, slot: _Slot, requested: ServiceSpec, operation_id: str) -> ServiceStatus:
-        backend = self._backends.get(requested.service_type)
+    def _provision_locked(
+        self,
+        slot: _Slot,
+        requested: ServiceSpec,
+        backend: ServiceBackend | None,
+        target_backend_id: str,
+        operation_id: str,
+    ) -> ServiceStatus:
         if backend is None:
             raise ServiceStartupError(
                 "no backend is configured for service type",
@@ -534,13 +565,20 @@ class ServiceManager:
                 details={"port": requested.port, "exception_type": type(exc).__name__},
                 cause=exc,
             ) from exc
-        self._prepare_new_spec(slot, requested, operation_id)
+        self._prepare_new_spec(slot, requested, target_backend_id, operation_id)
         try:
             resolved = resolve_runtime_settings(requested, self._hardware)
         except BaseException as exc:
             raise self._as_start_error(exc, slot, requested) from exc
         self._set_resolved_settings(slot, resolved)
-        reporter = _ProgressReporter(self, slot, operation_id, _START_PROGRESS_STATES)
+        reporter = _ProgressReporter(
+            self,
+            slot,
+            operation_id,
+            _START_PROGRESS_STATES,
+            service_type=requested.service_type,
+            backend_id=target_backend_id,
+        )
         try:
             returned_instance = backend.start(requested, resolved, reporter)
         except BaseException as exc:
@@ -610,18 +648,50 @@ class ServiceManager:
         if slot.instance is None or slot.backend is None:
             self._transition(slot, state=ServiceState.STOPPED, operation_id=operation_id, endpoint=None, error=None)
             return
-        self._transition(slot, state=ServiceState.STOPPING, operation_id=operation_id, endpoint=None, error=None)
-        reporter = _ProgressReporter(self, slot, operation_id, _STOP_PROGRESS_STATES)
+        instance_service_type = slot.instance_service_type or slot.service_type
+        instance_backend_id = slot.backend_id or self._backend_id(slot.backend)
+        self._transition(
+            slot,
+            state=ServiceState.STOPPING,
+            operation_id=operation_id,
+            event_service_type=instance_service_type,
+            event_backend_id=instance_backend_id,
+            endpoint=None,
+            error=None,
+        )
+        reporter = _ProgressReporter(
+            self,
+            slot,
+            operation_id,
+            _STOP_PROGRESS_STATES,
+            service_type=instance_service_type,
+            backend_id=instance_backend_id,
+        )
         try:
             slot.backend.stop(slot.instance, reporter)
         except BaseException as exc:
             raise self._as_stop_error(exc, slot) from exc
-        self._transition(slot, state=ServiceState.STOPPED, operation_id=operation_id, endpoint=None, error=None)
+        self._transition(
+            slot,
+            state=ServiceState.STOPPED,
+            operation_id=operation_id,
+            event_service_type=instance_service_type,
+            event_backend_id=instance_backend_id,
+            endpoint=None,
+            error=None,
+        )
 
-    def _prepare_new_spec(self, slot: _Slot, spec: ServiceSpec, operation_id: str) -> None:
+    def _prepare_new_spec(
+        self,
+        slot: _Slot,
+        spec: ServiceSpec,
+        target_backend_id: str,
+        operation_id: str,
+    ) -> None:
         now = self._now()
         with self._registry_lock:
             slot.service_type = spec.service_type
+            slot.target_backend_id = target_backend_id or None
             slot.requested_spec = self._copy_spec(spec)
             slot.resolved_settings = None
             slot.endpoint = None
@@ -643,7 +713,9 @@ class ServiceManager:
         with self._registry_lock:
             slot.backend = backend
             slot.backend_id = self._backend_id(backend)
+            slot.target_backend_id = self._backend_id(backend)
             slot.instance = instance
+            slot.instance_service_type = instance.endpoint.service_type
             slot.resolved_settings = ResolvedRuntimeSettings.model_validate(instance.resolved_settings.model_dump())
             slot.updated_at = self._non_decreasing(now, slot.updated_at)
 
@@ -654,7 +726,18 @@ class ServiceManager:
         instance: BackendInstance,
         operation_id: str,
     ) -> ServiceError | None:
-        reporter = _ProgressReporter(self, slot, operation_id, _STOP_PROGRESS_STATES)
+        instance_service_type = (
+            instance.endpoint.service_type if isinstance(instance.endpoint, ServiceEndpoint) else slot.service_type
+        )
+        instance_backend_id = self._backend_id(backend)
+        reporter = _ProgressReporter(
+            self,
+            slot,
+            operation_id,
+            _STOP_PROGRESS_STATES,
+            service_type=instance_service_type,
+            backend_id=instance_backend_id,
+        )
         try:
             backend.stop(instance, reporter)
         except BaseException as exc:
@@ -663,7 +746,9 @@ class ServiceManager:
             with self._registry_lock:
                 slot.backend = backend
                 slot.backend_id = self._backend_id(backend)
+                slot.target_backend_id = instance_backend_id
                 slot.instance = instance
+                slot.instance_service_type = instance_service_type
                 slot.updated_at = self._non_decreasing(now, slot.updated_at)
             return error
         return None
@@ -697,7 +782,13 @@ class ServiceManager:
             )
         return BackendInstance(endpoint=endpoint, resolved_settings=settings, handle=value.handle)
 
-    def _start_operation(self, slot: _Slot) -> str:
+    def _start_operation(
+        self,
+        slot: _Slot,
+        *,
+        service_type: ServiceType | None = None,
+        backend_id: str | None = None,
+    ) -> str:
         raw_operation_id = self._operation_id_factory()
         if not isinstance(raw_operation_id, str) or not raw_operation_id.strip():
             raise ServiceError("operation ID factory returned an invalid ID", code="service_operation_invalid")
@@ -706,6 +797,10 @@ class ServiceManager:
         with self._registry_lock:
             if operation_id in self._operation_by_id:
                 raise ServiceError("operation ID factory returned a duplicate ID", code="service_operation_invalid")
+            operation_service_type = service_type or slot.instance_service_type or slot.service_type
+            operation_backend_id = (
+                backend_id if backend_id is not None else slot.backend_id or slot.target_backend_id or ""
+            )
             timestamp = self._non_decreasing(now, slot.updated_at)
             pending = OperationStatus(
                 operation_id=operation_id,
@@ -722,6 +817,10 @@ class ServiceManager:
             )
             self._operations.append(running)
             self._operation_by_id[operation_id] = running
+            self._operation_identities[operation_id] = (
+                operation_service_type,
+                operation_backend_id,
+            )
             slot.operation_id = operation_id
             slot.updated_at = timestamp
         return operation_id
@@ -746,7 +845,7 @@ class ServiceManager:
                 EventLevel.INFO,
                 "service operation succeeded",
                 operation_id=operation_id,
-                data=self._slot_event_data(slot),
+                data=self._slot_event_data(slot, operation_id),
             )
         else:
             self._emit(
@@ -754,7 +853,7 @@ class ServiceManager:
                 EventLevel.ERROR,
                 "service operation failed",
                 operation_id=operation_id,
-                data=self._slot_event_data(slot),
+                data=self._slot_event_data(slot, operation_id),
                 error=error,
             )
 
@@ -764,6 +863,8 @@ class ServiceManager:
         *,
         state: ServiceState,
         operation_id: str,
+        event_service_type: ServiceType | None = None,
+        event_backend_id: str | None = None,
         endpoint: Any = ...,
         error: Any = ...,
         started_at: Any = ...,
@@ -792,7 +893,12 @@ class ServiceManager:
             if message is not ...:
                 operation_values["message"] = message
             self._replace_operation_locked(self._operation_with(operation, **operation_values))
-            data = self._slot_event_data_locked(slot)
+            operation_service_type, operation_backend_id = self._operation_identities[operation_id]
+            data = self._slot_event_data_locked(
+                slot,
+                service_type=event_service_type or operation_service_type,
+                backend_id=operation_backend_id if event_backend_id is None else event_backend_id,
+            )
             data.update({"old_state": old_state.value, "new_state": state.value})
         self._emit(
             "service.state.changed", EventLevel.INFO, "service state changed", operation_id=operation_id, data=data
@@ -872,11 +978,13 @@ class ServiceManager:
                 slot = _Slot(
                     port=spec.port,
                     service_type=spec.service_type,
+                    target_backend_id=None,
                     state=ServiceState.STOPPED,
                     requested_spec=None,
                     resolved_settings=None,
                     backend=None,
                     backend_id=None,
+                    instance_service_type=None,
                     instance=None,
                     endpoint=None,
                     error=None,
@@ -957,19 +1065,29 @@ class ServiceManager:
             EventLevel.INFO,
             "service operation started",
             operation_id=operation_id,
-            data=self._slot_event_data(slot),
+            data=self._slot_event_data(slot, operation_id),
         )
 
-    def _slot_event_data(self, slot: _Slot) -> dict[str, Any]:
+    def _slot_event_data(self, slot: _Slot, operation_id: str | None = None) -> dict[str, Any]:
         with self._registry_lock:
-            return self._slot_event_data_locked(slot)
+            if operation_id is None:
+                service_type = slot.instance_service_type or slot.service_type
+                backend_id = slot.backend_id or slot.target_backend_id or ""
+            else:
+                service_type, backend_id = self._operation_identities[operation_id]
+            return self._slot_event_data_locked(slot, service_type=service_type, backend_id=backend_id)
 
     @staticmethod
-    def _slot_event_data_locked(slot: _Slot) -> dict[str, Any]:
+    def _slot_event_data_locked(
+        slot: _Slot,
+        *,
+        service_type: ServiceType,
+        backend_id: str,
+    ) -> dict[str, Any]:
         return {
             "port": slot.port,
-            "service_type": slot.service_type.value,
-            "backend_id": slot.backend_id or "",
+            "service_type": service_type.value,
+            "backend_id": backend_id,
             "state": slot.state.value,
         }
 

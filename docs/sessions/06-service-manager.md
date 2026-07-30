@@ -374,6 +374,7 @@ Every non-no-op ensure, reuse health check, explicit health check, stop, replace
 - Terminal failures store `ArcadiaError.to_info()`.
 - History is in-memory and creation-ordered; port filtering preserves order.
 - Unknown IDs raise `ServiceError(code="service_operation_not_found")`.
+- Operation IDs are trimmed once at creation and lookup; duplicate detection and public retrieval use the normalized value.
 
 ### Ensure an unused or stopped port
 
@@ -411,6 +412,7 @@ Hold the port lock for the complete replacement:
 6. A failed new start leaves `FAILED` with the new requested spec and no endpoint.
 
 Replacement must support a change of service type and backend.
+- While a stopped old instance is retained during or after a failed cross-backend replacement, diagnostics and logs identify that instance's service type and backend rather than the new requested target.
 
 ### Stop
 
@@ -436,6 +438,7 @@ Replacement must support a change of service type and backend.
 - `get_logs` accepts exact `tail_lines` from `1` through `5000`.
 - No created instance: `ServiceNotRunningError(code="service_logs_unavailable")`.
 - Snapshot the instance under the registry lock, release the lock, then call the backend without the lifecycle lock so reads can overlap backend I/O.
+- Diagnostic/log snapshot service type and backend ID describe the queried instance when one exists; lifecycle status continues to describe the requested target.
 - Arbitrary failures become `service_diagnostics_failed` or `service_logs_failed` `ServiceError`s.
 - These reads create no operation and change no lifecycle state.
 
@@ -536,6 +539,7 @@ Requirements:
 
 - Operation events include `operation_id`.
 - Data is JSON-safe and includes applicable port, service type, backend ID, old/new state, and progress.
+- Ensure/replacement operation and start-progress events identify the requested target backend; stop progress for a retained instance identifies that instance's creating backend.
 - Failures use `EventLevel.ERROR` and attach `ArcadiaErrorInfo`.
 - Normal transitions use `INFO`; detailed progress may use `DEBUG`.
 - Do not repeat the full service spec in every event.
@@ -581,6 +585,7 @@ Use deterministic fake backends, handles, clock, operation IDs, port inspector, 
 - post-shutdown reads and lifecycle rejection;
 - context cleanup and preservation of an active context exception;
 - weak-reference `atexit` registration/unregistration without real child processes.
+- real `TcpPortInspector` occupied/refused/error behavior, constructor side-effect boundaries, and host/timeout validation.
 
 ### Contract tests
 
@@ -691,32 +696,32 @@ Implemented the synchronous, thread-safe in-memory `arcadia.services` lifecycle 
 
 ## State and side effects
 
-The manager owns detached hardware/backend snapshots, per-port lifecycle locks, in-memory status/operation history, and retained manager-owned instances for stopped diagnostics/logs. It creates no service, worker, listener probe, or hardware detection during import or construction. `TcpPortInspector` probes only when `ensure_service` preflights a requested port.
+The manager owns detached hardware/backend snapshots, per-port lifecycle locks, normalized in-memory operation history, requested target backend identity, and separate current/retained instance identity. Retained diagnostics/logs remain labeled with the instance's service type and creating backend across failed cross-backend replacement. Construction creates no service, worker, listener probe, or hardware detection; `TcpPortInspector` probes only when requested.
 
 ## Errors and events
 
-Lifecycle failures preserve backend `ServiceError` values or translate arbitrary exceptions to stable service errors with safe details and retained causes. The manager emits the specified lifecycle, reuse, progress, and shutdown event kinds through `EventEmitter`; sink failures are isolated.
+Lifecycle failures preserve backend `ServiceError` values or translate arbitrary exceptions to stable service errors with safe details and retained causes. Operation/start-progress events carry requested target backend identity; retained-instance stop progress carries creator identity. The manager emits through `EventEmitter`, and sink failures remain isolated.
 
 ## Tests and validation
 
 Passed:
 
 - `python -m pip install -e ".[dev]"`
-- `pytest tests/unit/services tests/contract/test_service_backend_contract.py tests/integration/test_service_manager_integration.py tests/test_package.py` — 37 passed.
+- `pytest tests/unit/services tests/contract/test_service_backend_contract.py tests/integration/test_service_manager_integration.py tests/test_package.py` — 52 passed.
 - `ruff format --check src/arcadia/services tests/unit/services tests/contract/test_service_backend_contract.py tests/integration/test_service_manager_integration.py tests/test_package.py`
 - `ruff check src/arcadia/services tests/unit/services tests/contract/test_service_backend_contract.py tests/integration/test_service_manager_integration.py tests/test_package.py`
 - `mypy src/arcadia`
 - `ruff format --check .`
 - `ruff check .`
-- `pytest` — 498 passed.
+- `pytest` — 513 passed.
 - `python -m build`
-- Clean-wheel smoke: created a temporary venv, installed the rebuilt wheel without source access, imported `arcadia.services`, exercised normalized operation lookup plus ensure/stop, and confirmed no `torch` or `llama_cpp` import.
+- Clean-wheel smoke: created a temporary venv, installed the rebuilt wheel without source access, imported `arcadia.services`, ensured a service, and retrieved a normalized operation using padded lookup input.
 
 ## Decisions and deviations
 
 The backend `start` contract is explicitly transactional. The manager best-effort stops an actual but invalid `BackendInstance`, retaining it only if cleanup fails. Synchronous lifecycle reentrancy from event sinks is rejected with `service_lifecycle_reentrant`; read-only callbacks remain supported.
 
-Review regressions now prove actual different-port overlap, cross-backend replacement, invalid-instance cleanup and retention, backend error preservation, ordered shutdown continuation and repeated shutdown, operation-ID normalization, concurrent diagnostics/log reads, context cleanup, lifecycle reentrancy rejection, sink isolation, weak atexit cleanup, operation filtering, and stopped-instance access. The backend contract test exposes `assert_service_backend_contract(...)` for Sessions 07 and 08 to reuse or parameterize.
+Review regressions now prove actual different-port overlap, cross-backend replacement, target backend event identity, retained-instance labeling after failed replacement, invalid-instance cleanup and retention, backend error preservation, ordered shutdown continuation and repeated shutdown, padded operation-ID lookup, concurrent diagnostics/log reads, context cleanup, lifecycle reentrancy rejection, sink isolation, weak atexit cleanup, operation filtering, stopped-instance access, and real `TcpPortInspector` behavior. The reusable backend contract now invokes backend `stop()` twice directly, in addition to testing the manager's stopped no-op.
 
 ## Known limitations
 
