@@ -384,11 +384,12 @@ Under the per-port lifecycle lock:
 2. Select the backend for `spec.service_type`; missing mapping raises `ServiceStartupError(code="service_backend_unavailable")`.
 3. Reject an unmanaged listener.
 4. Record `RESOLVING` and call `resolve_runtime_settings(spec, hardware)` without mutating inputs.
-5. Call backend `start` with a start-only progress reporter.
-6. Validate the `BackendInstance`: endpoint port/type match the spec and returned backend name matches initial resolution.
-7. If an actual `BackendInstance` fails validation, call its creating backend's `stop` best-effort before rejecting it; retain it for shutdown if cleanup fails.
-8. Call backend `check_health` once.
-9. Record `READY`, endpoint, final resolved settings, and `started_at`.
+5. Require `ServiceBackend.backend_id == ResolvedRuntimeSettings.backend`; mismatch raises `ServiceStartupError(code="service_backend_contract_invalid")` before `backend.start`.
+6. Call backend `start` with a start-only progress reporter.
+7. Validate the `BackendInstance`: endpoint port/type match the spec and returned backend name matches initial resolution.
+8. If an actual `BackendInstance` fails validation, call its creating backend's `stop` best-effort before rejecting it; retain it for shutdown if cleanup fails.
+9. Call backend `check_health` once.
+10. Record `READY`, endpoint, final resolved settings, and `started_at`.
 
 Invalid backend results raise `ServiceStartupError(code="service_backend_contract_invalid")`.
 
@@ -404,12 +405,14 @@ When the slot is `READY` and `requested_spec == spec`:
 
 Hold the port lock for the complete replacement:
 
-1. Stop the current manager-owned live/failed instance first.
-2. Keep the old spec and handle authoritative until stop succeeds.
-3. If stop fails, do not call the new backend.
-4. After successful stop, record `STOPPED` and provision the new spec normally.
-5. Do not roll back or restart the old service if the new start fails.
-6. A failed new start leaves `FAILED` with the new requested spec and no endpoint.
+1. Resolve the target backend mapping before teardown.
+2. If the target backend is unavailable, fail the operation without stopping or mutating an existing live/failed instance; a healthy existing service remains `READY`.
+3. Stop the current manager-owned live/failed instance only after target backend availability is established.
+4. Keep the old spec and handle authoritative until stop succeeds.
+5. If stop fails, do not call the new backend.
+6. After successful stop, record `STOPPED` and provision the new spec normally.
+7. Do not roll back or restart the old service if the new start fails.
+8. A failed new start leaves `FAILED` with the new requested spec and no endpoint.
 
 Replacement must support a change of service type and backend.
 - While a stopped old instance is retained during or after a failed cross-backend replacement, diagnostics and logs identify that instance's service type and backend rather than the new requested target.
@@ -709,21 +712,21 @@ Lifecycle failures preserve backend `ServiceError` values or translate arbitrary
 Passed:
 
 - `python -m pip install -e ".[dev]"`
-- `pytest tests/unit/services tests/contract/test_service_backend_contract.py tests/integration/test_service_manager_integration.py tests/test_package.py` — 54 passed.
+- `pytest tests/unit/services tests/contract/test_service_backend_contract.py tests/integration/test_service_manager_integration.py tests/test_package.py` — 56 passed.
 - `ruff format --check src/arcadia/services tests/unit/services tests/contract/test_service_backend_contract.py tests/integration/test_service_manager_integration.py tests/test_package.py`
 - `ruff check src/arcadia/services tests/unit/services tests/contract/test_service_backend_contract.py tests/integration/test_service_manager_integration.py tests/test_package.py`
 - `mypy src/arcadia`
 - `ruff format --check .`
 - `ruff check .`
-- `pytest` — 515 passed.
+- `pytest` — 517 passed.
 - `python -m build`
-- Clean-wheel smoke: created a temporary venv, installed the rebuilt wheel without source access, exercised a transient stop failure, and verified that repeated shutdown retried and completed cleanup.
+- Clean-wheel smoke: created a temporary venv, installed the rebuilt wheel without source access, and verified that a missing replacement backend preserves the healthy existing service without invoking stop.
 
 ## Decisions and deviations
 
-The backend `start` contract is explicitly transactional. The manager best-effort stops an actual but invalid `BackendInstance`, retaining it only if cleanup fails. Synchronous lifecycle reentrancy from event sinks is rejected with `service_lifecycle_reentrant`; read-only callbacks remain supported.
+The backend `start` contract is explicitly transactional. Target backend availability is established before replacement teardown, and backend identity must agree with resolved runtime settings before `start`. The manager best-effort stops an actual but invalid `BackendInstance`, retaining it only if cleanup fails. Synchronous lifecycle reentrancy from event sinks is rejected with `service_lifecycle_reentrant`; read-only callbacks remain supported.
 
-Review regressions now prove actual different-port overlap, cross-backend replacement, target backend event identity, retained-instance labeling after failed replacement, invalid-instance cleanup and retention, backend error preservation, ordered shutdown continuation and repeated shutdown, padded operation-ID lookup, concurrent diagnostics/log reads, context cleanup, lifecycle reentrancy rejection, sink isolation, weak atexit cleanup, operation filtering, stopped-instance access, and real `TcpPortInspector` behavior. The reusable backend contract now invokes backend `stop()` twice directly, in addition to testing the manager's stopped no-op.
+Review regressions now prove missing-backend replacement preservation, backend/resolver identity agreement, actual different-port overlap, cross-backend replacement, target backend event identity, retained-instance labeling after failed replacement, invalid-instance cleanup and retention, backend error preservation, ordered shutdown continuation and repeated shutdown, padded operation-ID lookup, concurrent diagnostics/log reads, context cleanup, lifecycle reentrancy rejection, sink isolation, weak atexit cleanup, operation filtering, stopped-instance access, and real `TcpPortInspector` behavior. The reusable backend contract invokes backend `stop()` twice directly, in addition to testing the manager's stopped no-op.
 
 Shutdown closes ordinary lifecycle calls immediately but preserves retry capability for failed-owned instances. The atexit callback remains registered through incomplete cleanup and unregisters only after a successful retry. Backend, port-inspector, resolution, diagnostics, and log boundaries translate `Exception`, not `BaseException`, so interrupts and interpreter exits propagate.
 

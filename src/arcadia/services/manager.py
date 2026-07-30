@@ -239,6 +239,16 @@ class ServiceManager:
                 backend_id=target_backend_id,
             )
             self._emit_operation_started(slot, operation_id)
+            if target_backend is None:
+                missing_backend_error = ServiceStartupError(
+                    "no backend is configured for service type",
+                    code="service_backend_unavailable",
+                    details={"port": requested.port, "service_type": requested.service_type.value},
+                )
+                if slot.instance is None or slot.state == ServiceState.STOPPED:
+                    self._record_failure(slot, missing_backend_error, operation_id, requested_spec=requested)
+                self._finish_operation(slot, operation_id, error=missing_backend_error)
+                raise missing_backend_error
             if slot.instance is not None and slot.state != ServiceState.STOPPED:
                 try:
                     self._stop_for_replacement_locked(slot, operation_id)
@@ -544,16 +554,10 @@ class ServiceManager:
         self,
         slot: _Slot,
         requested: ServiceSpec,
-        backend: ServiceBackend | None,
+        backend: ServiceBackend,
         target_backend_id: str,
         operation_id: str,
     ) -> ServiceStatus:
-        if backend is None:
-            raise ServiceStartupError(
-                "no backend is configured for service type",
-                code="service_backend_unavailable",
-                details={"port": requested.port, "service_type": requested.service_type.value},
-            )
         try:
             if self._port_inspector.is_in_use(requested.port):
                 raise ServiceConflictError(
@@ -575,6 +579,17 @@ class ServiceManager:
             resolved = resolve_runtime_settings(requested, self._hardware)
         except Exception as exc:
             raise self._as_start_error(exc, slot, requested) from exc
+        if target_backend_id != resolved.backend:
+            raise ServiceStartupError(
+                "backend identity does not match resolved runtime settings",
+                code="service_backend_contract_invalid",
+                details={
+                    "port": requested.port,
+                    "service_type": requested.service_type.value,
+                    "backend_id": target_backend_id,
+                    "resolved_backend": resolved.backend,
+                },
+            )
         self._set_resolved_settings(slot, resolved)
         reporter = _ProgressReporter(
             self,

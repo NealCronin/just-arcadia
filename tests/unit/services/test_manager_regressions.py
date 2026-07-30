@@ -197,6 +197,42 @@ def test_replacement_changes_service_type_and_backend() -> None:
     assert len(sam.started) == 1
 
 
+def test_missing_replacement_backend_preserves_existing_ready_service() -> None:
+    llama = RecordingBackend("llama_cpp")
+    service_manager = make_manager({ServiceType.LLM: llama})
+    ready = service_manager.ensure_service(spec(19032))
+    sam_spec = SamServiceSpec(port=19032, checkpoint_path="checkpoint.pt")
+
+    with pytest.raises(ServiceStartupError) as raised:
+        service_manager.ensure_service(sam_spec)
+
+    assert raised.value.code == "service_backend_unavailable"
+    preserved = service_manager.get_status(19032)
+    assert preserved.state == ServiceState.READY
+    assert preserved.endpoint == ready.endpoint
+    assert preserved.started_at == ready.started_at
+    assert preserved.requested_spec == ready.requested_spec
+    assert llama.stopped == []
+    failed_operation = service_manager.list_operations()[-1]
+    assert failed_operation.error is not None
+    assert failed_operation.error.code == "service_backend_unavailable"
+    assert failed_operation.service_state == ServiceState.READY
+
+
+def test_backend_identity_must_match_resolved_runtime_backend() -> None:
+    mismatched = RecordingBackend("sam3")
+    service_manager = make_manager({ServiceType.LLM: mismatched})
+
+    with pytest.raises(ServiceStartupError) as raised:
+        service_manager.ensure_service(spec(19033))
+
+    assert raised.value.code == "service_backend_contract_invalid"
+    assert raised.value.details["backend_id"] == "sam3"
+    assert raised.value.details["resolved_backend"] == "llama_cpp"
+    assert mismatched.started == []
+    assert service_manager.get_status(19033).state == ServiceState.FAILED
+
+
 def test_operation_and_progress_events_use_target_backend_identity() -> None:
     class ReportingBackend(RecordingBackend):
         def start(
