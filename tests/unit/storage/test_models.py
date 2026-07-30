@@ -6,7 +6,14 @@ from typing import Any
 import pytest
 from pydantic import ValidationError
 
-from arcadia.models import AnalysisSpec, AnalysisState, AnalysisStatus
+from arcadia.models import (
+    AnalysisSpec,
+    AnalysisState,
+    AnalysisStatus,
+    ResolvedRuntimeSettings,
+    ServiceEndpoint,
+    ServiceType,
+)
 from arcadia.storage import RunCorruptError, RunManifest, dumps_manifest, loads_manifest
 
 
@@ -66,6 +73,34 @@ def test_manifest_identity_and_json_defensive_copy() -> None:
         manifest(analysis_status=AnalysisStatus(run_id="different", tool_name="tool", state=AnalysisState.PENDING))
     with pytest.raises(ValidationError):
         manifest(analysis_status=AnalysisStatus(run_id="run-1", tool_name="different", state=AnalysisState.PENDING))
+
+
+def test_service_records_must_reference_matching_service_specs() -> None:
+    service_specs = {
+        "vision": {
+            "service_type": "visual_llm",
+            "port": 8000,
+            "model": {"repo_id": "owner/model", "filename": "model.gguf"},
+            "projector": {"repo_id": "owner/model", "filename": "projector.gguf"},
+        }
+    }
+    manifest_value = manifest(
+        service_specs=service_specs,
+        resolved_settings={"vision": ResolvedRuntimeSettings(backend="llama", values={"threads": 4})},
+        endpoint_assignments={
+            "vision": ServiceEndpoint(host="localhost", port=8000, service_type=ServiceType.VISUAL_LLM)
+        },
+    )
+    assert manifest_value.service_specs["vision"].service_type == ServiceType.VISUAL_LLM
+    with pytest.raises(ValidationError):
+        manifest(service_specs=service_specs, resolved_settings={"missing": ResolvedRuntimeSettings(backend="llama")})
+    with pytest.raises(ValidationError):
+        manifest(
+            service_specs=service_specs,
+            endpoint_assignments={"vision": ServiceEndpoint(host="localhost", port=8000, service_type=ServiceType.LLM)},
+        )
+    with pytest.raises(ValidationError):
+        manifest(service_specs={"svc": service_specs["vision"], " svc ": service_specs["vision"]})
 
 
 def test_load_errors_are_typed_and_sanitized() -> None:

@@ -1,7 +1,7 @@
 # Session 04: Run Storage and Reproducibility
 
 - Status: completed
-- Branch: `session/04-run-storage`
+- Branch: `headless-core` (implemented directly)
 - Owner: local agent session
 - Module: `arcadia.storage`
 
@@ -485,21 +485,21 @@ Never claim an unexecuted command passed.
 
 ## Definition of done
 
-- [ ] Every required public export exists.
-- [ ] No runtime dependency was added.
-- [ ] Manifests validate and round-trip.
-- [ ] Creation produces the exact layout without overwriting existing paths.
-- [ ] Existing runs reopen without mutation.
-- [ ] Manifest replacement is atomic under injected failures.
-- [ ] Immutable manifest fields cannot change.
-- [ ] Artifact paths cannot escape `outputs/`.
-- [ ] Artifact records append incrementally and deterministic duplicate behavior is tested.
-- [ ] Concurrent operations through one store instance do not corrupt files.
-- [ ] Storage does not write events or import future runtime modules.
-- [ ] Root import remains lightweight.
-- [ ] Ruff, mypy, pytest, build, and clean-wheel validation pass.
-- [ ] This file contains an honest completion record.
-- [ ] `docs/sessions/README.md` marks Session 04 completed only after validation succeeds.
+- [x] Every required public export exists.
+- [x] No runtime dependency was added.
+- [x] Manifests validate and round-trip.
+- [x] Creation produces the exact layout without overwriting existing paths.
+- [x] Existing runs reopen without mutation.
+- [x] Manifest replacement is atomic under injected failures.
+- [x] Immutable manifest fields cannot change.
+- [x] Artifact paths cannot escape `outputs/`.
+- [x] Artifact records append incrementally and deterministic duplicate behavior is tested.
+- [x] Concurrent operations through one store instance do not corrupt files.
+- [x] Storage does not write events or import future runtime modules.
+- [x] Root import remains lightweight.
+- [x] Ruff, mypy, pytest, build, and clean-wheel validation pass.
+- [x] This file contains an honest completion record.
+- [x] `docs/sessions/README.md` marks Session 04 completed only after validation succeeds.
 
 ## Stop conditions
 
@@ -511,7 +511,7 @@ Stop and record the issue instead of expanding scope if implementation requires 
 
 ## Outcome
 
-Completed. `arcadia.storage` now owns versioned run manifests, the exact per-run directory layout, atomic manifest replacement, safe output paths, and append-only artifact records.
+Completed. `arcadia.storage` now owns versioned run manifests, the exact per-run directory layout, atomic manifest replacement, safe output paths, and append-only artifact records. The hardening pass verifies interrupted-write recovery, symlink containment, corruption rejection, and manifest/service coherence.
 
 ## Files changed
 
@@ -525,7 +525,7 @@ Completed. `arcadia.storage` now owns versioned run manifests, the exact per-run
 - `tests/contract/test_run_manifest_serialization.py`
 - `tests/integration/test_run_storage.py`
 - `tests/test_package.py`
-- `docs/sessions/04-run-storage-and-reproducibility(2).md`
+- `docs/sessions/04-run-storage-and-reproducibility.md`
 - `docs/sessions/README.md`
 
 ## Delivered public API
@@ -549,15 +549,15 @@ Completed:
 - `ruff format --check .` — 60 files already formatted.
 - `ruff check .` — success.
 - `mypy src/arcadia` — success.
-- `pytest` — 405 passed.
+- `pytest` — 420 passed.
 - `python -m build` — sdist and wheel built successfully.
 - Clean-virtual-environment wheel smoke test — created `smoke-run`, reread the equal manifest, and confirmed `events.jsonl` exists.
 
-Focused validation also passed: `ruff format --check` and `ruff check` for storage/tests, `mypy src/arcadia`, and storage/package tests (`34 passed`).
+Focused hardening validation also passed: storage models/serialization/integration tests (`38 passed`) cover manifest short writes, flush/`fsync`/`os.replace` failures, temporary-file cleanup, concurrent manifest replacement, artifact append rollback and conflicts, symlink escape, corruption variants, and service-record coherence.
 
 ## Decisions and deviations
 
-No earlier public contract changed and no runtime dependency was added. Run manifests retain service specifications through the public `parse_service_spec` API; they do not import configuration, events, or future runtime modules.
+No earlier public contract changed and no runtime dependency was added. Storage defines its own checked-only recursive `JsonValue` alias and runtime JSON validation; it imports only public `arcadia.models` APIs. Run manifests retain service specifications through the public `parse_service_spec` API and do not import configuration, events, or future runtime modules.
 
 ## Known limitations
 

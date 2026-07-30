@@ -26,6 +26,16 @@ def _reject_json_constant(value: str) -> None:
     raise ValueError(f"non-finite JSON constant: {value}")
 
 
+def _write_all(handle: Any, data: bytes) -> None:
+    """Write every byte or raise instead of accepting a short write."""
+    offset = 0
+    while offset < len(data):
+        written = handle.write(data[offset:])
+        if not isinstance(written, int) or written <= 0:
+            raise OSError("file write did not make progress")
+        offset += written
+
+
 def _path_argument(value: str | os.PathLike[str], name: str) -> Path:
     if not isinstance(value, (str, os.PathLike)):
         raise StorageError(f"{name} must be a path", details={"argument": name, "exception_type": "TypeError"})
@@ -100,7 +110,7 @@ class RunStore:
                 with open(empty_path, "xb"):
                     pass
             with open(paths.manifest_path, "xb") as handle:
-                handle.write(manifest_bytes)
+                _write_all(handle, manifest_bytes)
                 handle.flush()
                 os.fsync(handle.fileno())
         except Exception as exc:
@@ -206,7 +216,7 @@ class RunStore:
                 fd, temporary_name = tempfile.mkstemp(prefix=".manifest-", suffix=".tmp", dir=self.paths.run_dir)
                 temporary_path = Path(temporary_name)
                 with os.fdopen(fd, "wb") as handle:
-                    handle.write(serialized)
+                    _write_all(handle, serialized)
                     handle.flush()
                     os.fsync(handle.fileno())
                 os.replace(temporary_path, self.paths.manifest_path)
@@ -363,7 +373,7 @@ class RunStore:
             try:
                 with open(self.paths.artifact_index_path, "ab") as handle:
                     write_started = True
-                    handle.write(line)
+                    _write_all(handle, line)
                     handle.flush()
                     if fsync:
                         os.fsync(handle.fileno())

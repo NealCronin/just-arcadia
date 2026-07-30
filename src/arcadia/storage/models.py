@@ -7,7 +7,7 @@ import re
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any, TypeAlias
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -19,7 +19,11 @@ from arcadia.models import (
     ServiceSpec,
     parse_service_spec,
 )
-from arcadia.models.common import JsonValue
+
+if TYPE_CHECKING:
+    JsonValue: TypeAlias = None | bool | int | float | str | list["JsonValue"] | dict[str, "JsonValue"]
+else:
+    JsonValue: TypeAlias = Any
 
 RUN_MANIFEST_SCHEMA_VERSION = 1
 
