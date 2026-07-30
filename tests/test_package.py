@@ -21,6 +21,7 @@ HEAVY_MODULES = [
     "torch",
     "ultralytics",
     "llama_cpp",
+    "huggingface_hub",
 ]
 
 
@@ -270,3 +271,78 @@ def test_services_imports_without_heavy_or_future_backends() -> None:
     result = subprocess.run([sys.executable, "-c", command], capture_output=True, text=True, timeout=60)
     assert result.returncode == 0, f"subprocess failed: {result.stderr}"
     assert result.stdout.strip() == "[]", f"forbidden modules were imported: {result.stdout}"
+
+
+def test_root_and_backend_namespace_imports_remain_lazy() -> None:
+    command = (
+        "import arcadia, sys; "
+        "assert 'arcadia.backends' not in sys.modules; "
+        "import arcadia.backends; "
+        "assert 'arcadia.backends.llama_cpp' not in sys.modules; "
+        "import arcadia.backends.llama_cpp; "
+        f"print([m for m in {HEAVY_MODULES!r} if m in sys.modules])"
+    )
+    result = subprocess.run([sys.executable, "-c", command], capture_output=True, text=True, timeout=60)
+    assert result.returncode == 0, f"subprocess failed: {result.stderr}"
+    assert result.stdout.strip() == "[]", f"backend import loaded optional packages: {result.stdout}"
+
+
+def test_llama_backend_construction_has_no_runtime_side_effects() -> None:
+    command = """
+import pathlib
+import socket
+import subprocess
+import tempfile
+import threading
+import urllib.request
+
+subprocess.Popen = lambda *a, **k: (_ for _ in ()).throw(AssertionError("process"))
+socket.create_connection = lambda *a, **k: (_ for _ in ()).throw(AssertionError("probe"))
+urllib.request.urlopen = lambda *a, **k: (_ for _ in ()).throw(AssertionError("http"))
+tempfile.mkdtemp = lambda *a, **k: (_ for _ in ()).throw(AssertionError("write"))
+pathlib.Path.mkdir = lambda *a, **k: (_ for _ in ()).throw(AssertionError("write"))
+threading.Thread.start = lambda *a, **k: (_ for _ in ()).throw(AssertionError("thread"))
+
+from arcadia.backends.llama_cpp import LlamaCppBackend, LlamaCppBackendConfig
+LlamaCppBackend(config=LlamaCppBackendConfig())
+print("ok")
+"""
+    result = subprocess.run([sys.executable, "-c", command], capture_output=True, text=True, timeout=60)
+    assert result.returncode == 0, f"subprocess failed: {result.stderr}"
+    assert result.stdout.strip() == "ok"
+
+
+def test_default_start_reports_missing_optional_dependency_cleanly() -> None:
+    command = """
+import builtins
+real_import = builtins.__import__
+def guarded(name, *args, **kwargs):
+    if name == "huggingface_hub" or name.startswith("huggingface_hub."):
+        raise ModuleNotFoundError(name)
+    return real_import(name, *args, **kwargs)
+builtins.__import__ = guarded
+
+from arcadia.backends.llama_cpp import LlamaCppBackend
+from arcadia.models import HuggingFaceFileSpec, LlamaServiceSpec, ResolvedRuntimeSettings, ServiceType
+
+class Progress:
+    def report(self, **kwargs):
+        pass
+
+spec = LlamaServiceSpec(
+    service_type=ServiceType.LLM,
+    port=19000,
+    model=HuggingFaceFileSpec(repo_id="owner/model", filename="model.gguf"),
+)
+try:
+    LlamaCppBackend().start(
+        spec,
+        ResolvedRuntimeSettings(backend="llama_cpp", values={"device": "cpu"}),
+        Progress(),
+    )
+except Exception as exc:
+    print(type(exc).__name__, getattr(exc, "code", ""))
+"""
+    result = subprocess.run([sys.executable, "-c", command], capture_output=True, text=True, timeout=60)
+    assert result.returncode == 0, f"subprocess failed: {result.stderr}"
+    assert result.stdout.strip() == "ServiceStartupError llama_cpp_dependency_missing"
