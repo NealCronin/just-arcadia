@@ -12,6 +12,10 @@ from pathlib import Path
 from typing import IO, Any, Protocol
 
 
+class ServerDependencyUnavailable(RuntimeError):
+    """The configured Python cannot import the llama.cpp server module."""
+
+
 class OwnedProcess(Protocol):
     @property
     def pid(self) -> int: ...
@@ -32,6 +36,8 @@ class ProcessLauncher(Protocol):
         log_path: Path,
         environment_updates: Mapping[str, str],
     ) -> OwnedProcess: ...
+
+    def verify_server(self, python_executable: str, *, timeout_seconds: float) -> None: ...
 
 
 class ManagedSubprocess:
@@ -109,9 +115,34 @@ class ManagedSubprocess:
 class SubprocessLauncher:
     """Launch ``llama_cpp.server`` without a shell and with platform containment."""
 
-    def __init__(self, *, platform: str | None = None, popen_factory: Any = subprocess.Popen) -> None:
+    def __init__(
+        self,
+        *,
+        platform: str | None = None,
+        popen_factory: Any = subprocess.Popen,
+        run_factory: Any = subprocess.run,
+    ) -> None:
         self._platform = sys.platform if platform is None else platform
         self._popen_factory = popen_factory
+        self._run_factory = run_factory
+
+    def verify_server(self, python_executable: str, *, timeout_seconds: float) -> None:
+        """Boundedly verify the configured interpreter can import the server."""
+
+        try:
+            completed = self._run_factory(
+                [python_executable, "-c", "import llama_cpp.server"],
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                check=False,
+                shell=False,
+                timeout=timeout_seconds,
+            )
+        except subprocess.TimeoutExpired as exc:
+            raise ServerDependencyUnavailable("llama.cpp server import preflight timed out") from exc
+        if completed.returncode != 0:
+            raise ServerDependencyUnavailable("configured Python cannot import llama_cpp.server")
 
     def launch(
         self,

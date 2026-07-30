@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 from arcadia.backends.llama_cpp import LLAMA_CPP_BACKEND_ID, LlamaCppBackend, LlamaCppBackendConfig
+from arcadia.backends.llama_cpp.process import ServerDependencyUnavailable
 from arcadia.models import (
     HuggingFaceFileSpec,
     LlamaServiceSpec,
@@ -161,6 +162,35 @@ def test_rejects_invalid_specs_backend_globs_and_split_before_resolution(tmp_pat
             backend.start(spec, settings, RecordingProgress())
         assert captured.value.code == code
     assert resolver.calls == []
+
+
+def test_missing_llama_server_is_dependency_error_before_hugging_face_resolution(tmp_path: Path) -> None:
+    class MissingServerLauncher(FakeLauncher):
+        def verify_server(self, python_executable: str, *, timeout_seconds: float) -> None:
+            assert python_executable == "/configured/python"
+            assert timeout_seconds == 30.0
+            raise ServerDependencyUnavailable("llama_cpp.server is missing")
+
+    model = tmp_path / "model.gguf"
+    model.write_bytes(b"model")
+    resolver = FakeResolver(model)
+    launcher = MissingServerLauncher()
+    backend = LlamaCppBackend(
+        config=LlamaCppBackendConfig(
+            runtime_dir=tmp_path / "runtime",
+            python_executable="/configured/python",
+        ),
+        file_resolver=resolver,
+        process_launcher=launcher,
+        health_probe=FakeHealth(),
+    )
+
+    with pytest.raises(ServiceStartupError) as captured:
+        backend.start(_spec(), _settings(), RecordingProgress())
+    assert captured.value.code == "llama_cpp_dependency_missing"
+    assert captured.value.details["dependency"] == "llama_cpp.server"
+    assert resolver.calls == []
+    assert launcher.calls == []
 
 
 def test_projector_failure_prevents_launch_and_cleans_nothing_cached(tmp_path: Path) -> None:

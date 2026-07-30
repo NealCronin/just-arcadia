@@ -31,7 +31,7 @@ from arcadia.services import BackendInstance, BackendProgressReporter
 from .config import LlamaCppBackendConfig
 from .files import FileResolver, FileRole, HuggingFaceFileResolver
 from .health import HealthProbe, HttpModelsHealthProbe
-from .process import OwnedProcess, ProcessLauncher, SubprocessLauncher
+from .process import OwnedProcess, ProcessLauncher, ServerDependencyUnavailable, SubprocessLauncher
 from .settings import translate_settings
 
 LLAMA_CPP_BACKEND_ID = "llama_cpp"
@@ -108,6 +108,7 @@ class LlamaCppBackend:
         log_path: Path | None = None
         process: OwnedProcess | None = None
         try:
+            self._verify_server_dependency()
             model_path = self._resolve_file(spec.model, role="model", progress=progress)
             projector_path = (
                 self._resolve_file(spec.projector, role="projector", progress=progress)
@@ -335,6 +336,32 @@ class LlamaCppBackend:
                 code="llama_cpp_split_gguf_unsupported",
                 details={"filename": file_spec.filename},
             )
+
+    def _verify_server_dependency(self) -> None:
+        verify = getattr(self._process_launcher, "verify_server", None)
+        if verify is None:
+            # Injected launchers own their runtime boundary and may deliberately
+            # avoid a locally installed llama.cpp package in tests/integrations.
+            return
+        try:
+            verify(
+                self._config.python_executable,
+                timeout_seconds=min(self._config.startup_timeout_seconds, 30.0),
+            )
+        except ServerDependencyUnavailable as exc:
+            raise ServiceStartupError(
+                "Configured Python cannot import the llama.cpp server",
+                code="llama_cpp_dependency_missing",
+                details={"dependency": "llama_cpp.server", "exception_type": type(exc).__name__},
+                cause=exc,
+            ) from exc
+        except Exception as exc:
+            raise ServiceStartupError(
+                "Failed to run llama.cpp dependency preflight",
+                code="llama_cpp_process_launch_failed",
+                details={"exception_type": type(exc).__name__},
+                cause=exc,
+            ) from exc
 
     def _resolve_file(
         self,

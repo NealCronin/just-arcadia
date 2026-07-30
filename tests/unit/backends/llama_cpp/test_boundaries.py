@@ -8,7 +8,11 @@ from typing import Any
 import pytest
 
 from arcadia.backends.llama_cpp.files import HuggingFaceFileResolver
-from arcadia.backends.llama_cpp.process import ManagedSubprocess, SubprocessLauncher
+from arcadia.backends.llama_cpp.process import (
+    ManagedSubprocess,
+    ServerDependencyUnavailable,
+    SubprocessLauncher,
+)
 from arcadia.models import HuggingFaceFileSpec, ServiceState
 from tests.helpers.llama_cpp import RecordingProgress
 
@@ -94,6 +98,29 @@ class FakePopen:
 
     def send_signal(self, value: int) -> None:
         self.signals.append(value)
+
+
+def test_server_dependency_preflight_uses_configured_python_and_is_bounded() -> None:
+    from types import SimpleNamespace
+
+    calls: list[tuple[list[str], dict[str, Any]]] = []
+
+    def run(command: list[str], **kwargs: Any) -> SimpleNamespace:
+        calls.append((command, kwargs))
+        return SimpleNamespace(returncode=0)
+
+    SubprocessLauncher(run_factory=run).verify_server("/configured/python", timeout_seconds=7.5)
+    assert calls[0][0] == ["/configured/python", "-c", "import llama_cpp.server"]
+    assert calls[0][1]["timeout"] == 7.5
+    assert calls[0][1]["shell"] is False
+
+
+def test_server_dependency_preflight_rejects_missing_or_broken_module() -> None:
+    from types import SimpleNamespace
+
+    launcher = SubprocessLauncher(run_factory=lambda *args, **kwargs: SimpleNamespace(returncode=1))
+    with pytest.raises(ServerDependencyUnavailable):
+        launcher.verify_server("/configured/python", timeout_seconds=7.5)
 
 
 def test_subprocess_launcher_uses_argument_list_shell_false_and_new_session(tmp_path: Path) -> None:

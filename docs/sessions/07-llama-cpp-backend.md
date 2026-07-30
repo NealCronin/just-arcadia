@@ -812,14 +812,14 @@ An honest pushed partial implementation is preferable to an undocumented contrac
 
 ## Outcome
 
-Completed. `arcadia.backends.llama_cpp` now resolves exact GGUF files, translates resolved settings, launches and owns a synchronous `llama_cpp.server` subprocess, waits for OpenAI models-endpoint readiness, and provides bounded health, stop, diagnostics, and log behavior through the Session 06 backend contract.
+Completed. `arcadia.backends.llama_cpp` now preflights the configured Python for `llama_cpp.server`, resolves exact GGUF files, translates resolved settings, launches and owns a synchronous server subprocess, waits for OpenAI models-endpoint readiness, and provides bounded health, stop, diagnostics, and log behavior through the Session 06 backend contract.
 
 ## Git delivery
 
 - Starting `origin/headless-core`: `f6f7cfcda2c326ddbcb54d522a655d45b5b8d5f8`.
 - Session-start commit: `e76f87a` (`docs: start llama-cpp backend session`), pushed before implementation.
 - Implementation commit: `7636e84` (`feat: add llama-cpp service backend`), pushed normally.
-- Final pushed commit: the completion-record commit containing this section and the final Windows-containment regression test; local `HEAD` was verified against `origin/headless-core` after push.
+- Completion-record commit: `93965cf`; the later review-fix commit containing the configured-Python dependency preflight was also pushed normally, and local `HEAD` was verified against `origin/headless-core` after push.
 - No rebase conflict occurred and no force push was used.
 
 ## Files changed
@@ -834,7 +834,7 @@ Completed. `arcadia.backends.llama_cpp` now resolves exact GGUF files, translate
 
 ## State and side effects
 
-The default resolver first performs an exact cache-only `hf_hub_download`, then downloads only the exact repository, filename, and revision after a cache miss. Each start owns a private runtime directory, restrictive JSON config, retained binary log, child process, containment boundary, endpoint, and identities. Successful readiness removes the config; failed startup terminates/reaps the tree and removes all attempt files. Stop retains the log until the opaque handle is discarded. Health uses bounded `GET /v1/models` requests. CUDA selection changes only the child environment. Hugging Face cache files are never modified or deleted.
+The default process boundary first runs a bounded, output-suppressed `import llama_cpp.server` using the configured Python executable; injected launchers may own and omit that preflight. The default resolver then performs an exact cache-only `hf_hub_download`, followed by downloading only the exact repository, filename, and revision after a cache miss. Each start owns a private runtime directory, restrictive JSON config, retained binary log, child process, containment boundary, endpoint, and identities. Successful readiness removes the config; failed startup terminates/reaps the tree and removes all attempt files. Stop retains the log until the opaque handle is discarded. Health uses bounded `GET /v1/models` requests. CUDA selection changes only the child environment. Hugging Face cache files are never modified or deleted.
 
 ## Settings translation
 
@@ -842,7 +842,7 @@ The default resolver first performs an exact cache-only `hf_hub_download`, then 
 
 ## Errors
 
-The implementation emits the planned stable `llama_cpp_*` codes for missing dependencies, invalid specs/backend/settings, split GGUF, model resolution, process launch/exit/timeout, invalid handles, process health, health probes, stop, diagnostics, and logs. Public details contain only bounded identities, PID/return code, setting names, and exception types; raw exceptions remain in `cause`.
+The implementation emits the planned stable `llama_cpp_*` codes for missing dependencies, invalid specs/backend/settings, split GGUF, model resolution, process launch/exit/timeout, invalid handles, process health, health probes, stop, diagnostics, and logs. A missing, broken, or import-timeout `llama_cpp.server` preflight is classified as `llama_cpp_dependency_missing`; inability to execute the configured Python remains `llama_cpp_process_launch_failed`. Public details contain only bounded identities, PID/return code, setting names, and exception types; raw exceptions remain in `cause`.
 
 ## Tests and validation
 
@@ -850,6 +850,7 @@ The implementation emits the planned stable `llama_cpp_*` codes for missing depe
 - Initial focused run found two test-fixture defects; after correction, `pytest -q tests/unit/backends/llama_cpp tests/contract/test_llama_cpp_backend_contract.py tests/integration/test_llama_cpp_backend_integration.py tests/test_package.py` — 57 passed.
 - Final `ruff format --check .` — 100 files already formatted; `ruff check .` and `mypy src/arcadia` — passed.
 - Final full suite after adding the Windows fallback assertion: `pytest -q` — 560 passed.
+- Review-fix validation: focused dependency/backend/package tests — 57 passed; `ruff format --check .`, `ruff check .`, and `mypy src/arcadia` passed; final `pytest -q` — 563 passed.
 - `python -m build` — built the sdist and base wheel; the wheel contains the new backend package.
 - Clean-wheel smoke in `/tmp/arcadia-wheel-smoke-07` — the first script run exposed and corrected a smoke-fixture progress-enum error; the final isolated base-wheel run printed `clean-wheel-smoke-ok`. It verified lazy imports, typed missing-dependency startup, fake-boundary manager lifecycle, JSON serialization, and no handle/absolute-path leakage.
 - POSIX containment was simulated for graceful-to-forced signaling and exercised with a real local child process tree on macOS. Windows `CREATE_NEW_PROCESS_GROUP` launch and owned-PID `taskkill /T /F` fallback were simulated. No Windows host was available for a real process-tree smoke.
@@ -858,6 +859,7 @@ The implementation emits the planned stable `llama_cpp_*` codes for missing depe
 ## Decisions and deviations
 
 No earlier public contract or base dependency changed, and no ADR was needed. The optional `llama` extra is `huggingface-hub>=0.34,<2` plus `llama-cpp-python[server]>=0.3,<0.4`. POSIX uses a new session/process group. Windows uses the allowed `CREATE_NEW_PROCESS_GROUP` plus exact owned-PID `taskkill /T` fallback because portable `subprocess.Popen` does not expose a race-free suspended-thread Job Object assignment boundary.
+- Review follow-up added a maximum-30-second configured-Python `llama_cpp.server` import preflight before any Hugging Face cache lookup or download. Its stdout/stderr are discarded and it uses an argument list with `shell=False`.
 
 ## Known limitations
 
