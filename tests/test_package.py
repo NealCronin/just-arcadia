@@ -58,12 +58,9 @@ def test_no_heavy_imports() -> None:
     assert result.stdout.strip() == "[]", f"heavy modules were imported: {result.stdout}"
 
 
-def test_no_future_implementation_packages() -> None:
-    """Session 0 must not create empty future implementation packages.
-
-    These submodules are reserved for future sessions and must not exist yet.
-    """
-    for name in ("arcadia.services", "arcadia.analysis", "arcadia.tools"):
+def test_only_unimplemented_future_packages_are_absent() -> None:
+    """Reserved packages remain absent until their owning sessions implement them."""
+    for name in ("arcadia.analysis", "arcadia.tools"):
         with pytest.raises(ImportError, match=f"No module named '{name}'"):
             __import__(name)
 
@@ -241,6 +238,33 @@ def test_hardware_imports_no_forbidden_modules_or_probes() -> None:
         "import subprocess; "
         "subprocess.run = lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError('probe')); "
         "import arcadia.hardware; import sys; "
+        f"print([m for m in {forbidden!r} if m in sys.modules])"
+    )
+    result = subprocess.run([sys.executable, "-c", command], capture_output=True, text=True, timeout=60)
+    assert result.returncode == 0, f"subprocess failed: {result.stderr}"
+    assert result.stdout.strip() == "[]", f"forbidden modules were imported: {result.stdout}"
+
+
+def test_import_arcadia_does_not_import_services() -> None:
+    """The root package remains independent from the lifecycle layer."""
+    result = subprocess.run(
+        [sys.executable, "-c", "import arcadia; import sys; print('arcadia.services' in sys.modules)"],
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    assert result.returncode == 0, f"subprocess failed: {result.stderr}"
+    assert result.stdout.strip() == "False", "arcadia.services was eagerly imported"
+
+
+def test_services_imports_without_heavy_or_future_backends() -> None:
+    """Importing the generic lifecycle package performs no runtime backend work."""
+    forbidden = HEAVY_MODULES + ["arcadia.backends", "arcadia.transport", "arcadia.inference", "arcadia.analysis"]
+    command = (
+        "import socket, threading; "
+        "socket.create_connection = lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError('probe')); "
+        "threading.Thread.start = lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError('thread')); "
+        "import arcadia.services; import sys; "
         f"print([m for m in {forbidden!r} if m in sys.modules])"
     )
     result = subprocess.run([sys.executable, "-c", command], capture_output=True, text=True, timeout=60)

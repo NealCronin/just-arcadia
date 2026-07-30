@@ -25,6 +25,7 @@ Do not create separate session prompts, design documents, handoff templates, or 
 | 03 | Events and structured logging | Completed |
 | 04 | Run storage and reproducibility | Completed |
 | 05 | Hardware detection and runtime resolution | Completed |
+| 06 | Service manager and backend contract | Completed |
 
 ## Session lifecycle
 

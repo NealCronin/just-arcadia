@@ -1,6 +1,6 @@
 # Session 06: Service Manager and Backend Contract
 
-- Status: in-progress
+- Status: completed
 - Branch: `session/06-service-manager`
 - Owner: local agent session
 - Module: `arcadia.services`
@@ -318,30 +318,43 @@ Construction must:
 @property
 def hardware(self) -> HardwareCapabilities: ...
 
+
 @property
 def is_closed(self) -> bool: ...
 
+
 def ensure_service(self, spec: ServiceSpec) -> ServiceStatus: ...
+
 
 def stop_service(self, port: int) -> ServiceStatus: ...
 
+
 def check_health(self, port: int) -> ServiceStatus: ...
+
 
 def get_status(self, port: int) -> ServiceStatus: ...
 
+
 def list_statuses(self) -> tuple[ServiceStatus, ...]: ...
+
 
 def get_operation(self, operation_id: str) -> OperationStatus: ...
 
+
 def list_operations(self, port: int | None = None) -> tuple[OperationStatus, ...]: ...
+
 
 def get_diagnostics(self, port: int) -> ServiceDiagnostics: ...
 
+
 def get_logs(self, port: int, *, tail_lines: int = 200) -> ServiceLogSnapshot: ...
+
 
 def shutdown(self) -> tuple[ServiceStatus, ...]: ...
 
+
 def __enter__(self) -> ServiceManager: ...
+
 
 def __exit__(self, exc_type: object, exc: object, traceback: object) -> None: ...
 ```
@@ -630,22 +643,22 @@ Never claim an unexecuted command passed.
 
 ## Definition of done
 
-- [ ] Required public API exists and root import remains lightweight.
-- [ ] No runtime dependency is added.
-- [ ] Construction starts no service, thread, hardware probe, or port probe.
-- [ ] Backend contract supports future llama.cpp and SAM3 implementations.
-- [ ] Ensure, reuse, replacement, health, stop, diagnostics/logs, and shutdown are deterministic.
-- [ ] Same-port operations serialize; different ports can overlap.
-- [ ] Unmanaged listeners are rejected and never adopted or terminated.
-- [ ] Session 05 resolution is used without mutating inputs.
-- [ ] Status and operation snapshots remain coherent through failures.
-- [ ] Handles never cross public boundaries.
-- [ ] Events are emitted and sink failures are isolated.
-- [ ] Shutdown attempts every owned service and reports aggregate failure honestly.
-- [ ] No real backend, transport, inference, CLI, or UI code is introduced.
-- [ ] Focused/full tests, Ruff, mypy, build, and clean-wheel validation pass.
-- [ ] This file contains an honest completion record.
-- [ ] Session index is updated only after completion.
+- [x] Required public API exists and root import remains lightweight.
+- [x] No runtime dependency is added.
+- [x] Construction starts no service, thread, hardware probe, or port probe.
+- [x] Backend contract supports future llama.cpp and SAM3 implementations.
+- [x] Ensure, reuse, replacement, health, stop, diagnostics/logs, and shutdown are deterministic.
+- [x] Same-port operations serialize; different ports can overlap.
+- [x] Unmanaged listeners are rejected and never adopted or terminated.
+- [x] Session 05 resolution is used without mutating inputs.
+- [x] Status and operation snapshots remain coherent through failures.
+- [x] Handles never cross public boundaries.
+- [x] Events are emitted and sink failures are isolated.
+- [x] Shutdown attempts every owned service and reports aggregate failure honestly.
+- [x] No real backend, transport, inference, CLI, or UI code is introduced.
+- [x] Focused/full tests, Ruff, mypy, build, and clean-wheel validation pass.
+- [x] This file contains an honest completion record.
+- [x] Session index is updated only after completion.
 
 ## Stop conditions
 
@@ -661,39 +674,52 @@ The implementation agent fills this section before stopping and changes the top 
 
 ## Outcome
 
-Not yet implemented.
+Implemented the synchronous, thread-safe in-memory `arcadia.services` lifecycle manager and its backend/port contracts. No Session 01–05 public contract changed and no runtime dependency was added.
 
 ## Files changed
 
-Not yet implemented.
+- Added `src/arcadia/services/{__init__,backend,manager,models}.py`.
+- Added focused unit, contract, and integration coverage under `tests/`.
+- Updated package-isolation tests and the session index.
 
 ## Delivered public API
 
-Not yet implemented.
+`arcadia.services` exports `BackendInstance`, `BackendProgressReporter`, `ServiceBackend`, `ServiceDiagnostics`, `ServiceLogSnapshot`, `PortInspector`, `TcpPortInspector`, and `ServiceManager`.
 
 ## State and side effects
 
-Not yet implemented.
+The manager owns detached hardware/backend snapshots, per-port lifecycle locks, in-memory status/operation history, and retained manager-owned instances for stopped diagnostics/logs. It creates no service, worker, listener probe, or hardware detection during import or construction. `TcpPortInspector` probes only when `ensure_service` preflights a requested port.
 
 ## Errors and events
 
-Not yet implemented.
+Lifecycle failures preserve backend `ServiceError` values or translate arbitrary exceptions to stable service errors with safe details and retained causes. The manager emits the specified lifecycle, reuse, progress, and shutdown event kinds through `EventEmitter`; sink failures are isolated.
 
 ## Tests and validation
 
-Not yet implemented. Record exact commands and results; never claim an unexecuted command passed.
+Passed:
+
+- `python -m pip install -e ".[dev]"`
+- `pytest tests/unit/services tests/contract/test_service_backend_contract.py tests/integration/test_service_manager_integration.py tests/test_package.py` — 24 passed.
+- `ruff format --check src/arcadia/services tests/unit/services tests/contract/test_service_backend_contract.py tests/integration/test_service_manager_integration.py tests/test_package.py`
+- `ruff check src/arcadia/services tests/unit/services tests/contract/test_service_backend_contract.py tests/integration/test_service_manager_integration.py tests/test_package.py`
+- `mypy src/arcadia`
+- `ruff format --check .`
+- `ruff check .`
+- `pytest` — 485 passed.
+- `python -m build`
+- Clean-wheel smoke: created a temporary venv, installed the built wheel without source access, imported `arcadia.services`, exercised ensure/diagnostics/logs/reuse/stop/shutdown, round-tripped public snapshots, and confirmed no `torch` or `llama_cpp` import.
 
 ## Decisions and deviations
 
-Not yet implemented.
+No deviations. The manager retains a stopped instance only for backend diagnostics/log access and never exposes its opaque handle.
 
 ## Known limitations
 
-Not yet implemented.
+This session intentionally supplies no real backend, listener/process implementation, polling, async API, transport, or persistence.
 
 ## Assumptions and risks
 
-Not yet implemented.
+Future backends must honor the `ServiceBackend` ownership, progress, bounded diagnostics/log, and idempotent-stop contract. Process-tree containment remains a backend responsibility.
 
 ## Next-session prerequisites
 
