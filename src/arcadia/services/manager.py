@@ -176,6 +176,7 @@ class ServiceManager:
         self._operation_identities: dict[str, tuple[ServiceType, str]] = {}
         self._closing = False
         self._closed = False
+        self._cleanup_complete = False
         self._atexit_callback: Callable[[], None] | None = None
         if register_atexit:
             manager_ref = weakref.ref(self)
@@ -195,7 +196,7 @@ class ServiceManager:
     def _backend_id(backend: ServiceBackend) -> str:
         try:
             backend_id = backend.backend_id
-        except BaseException as exc:
+        except Exception as exc:
             raise ValueError("backend_id could not be read") from exc
         if not isinstance(backend_id, str):
             return ""
@@ -241,7 +242,7 @@ class ServiceManager:
             if slot.instance is not None and slot.state != ServiceState.STOPPED:
                 try:
                     self._stop_for_replacement_locked(slot, operation_id)
-                except BaseException as exc:
+                except Exception as exc:
                     error = self._as_stop_error(exc, slot)
                     self._record_failure(slot, error, operation_id)
                     self._finish_operation(slot, operation_id, error=error)
@@ -254,7 +255,7 @@ class ServiceManager:
                     target_backend_id,
                     operation_id,
                 )
-            except BaseException as exc:
+            except Exception as exc:
                 error = self._as_start_error(exc, slot, requested)
                 self._record_failure(slot, error, operation_id, requested_spec=requested)
                 self._finish_operation(slot, operation_id, error=error)
@@ -302,7 +303,7 @@ class ServiceManager:
             self._emit_operation_started(slot, operation_id)
             try:
                 slot.backend.check_health(slot.instance)
-            except BaseException as exc:
+            except Exception as exc:
                 error = self._as_health_error(exc, slot)
                 self._record_failure(slot, error, operation_id)
                 self._finish_operation(slot, operation_id, error=error)
@@ -379,7 +380,7 @@ class ServiceManager:
                 }
             except ServiceError:
                 raise
-            except BaseException as exc:
+            except Exception as exc:
                 raise ServiceError(
                     "backend diagnostics failed",
                     code="service_diagnostics_failed",
@@ -395,7 +396,7 @@ class ServiceManager:
                 details=details,
                 updated_at=updated_at,
             )
-        except BaseException as exc:
+        except Exception as exc:
             if isinstance(exc, ServiceError):
                 raise
             raise ServiceError(
@@ -444,7 +445,7 @@ class ServiceManager:
             )
         except ServiceError:
             raise
-        except BaseException as exc:
+        except Exception as exc:
             raise ServiceError(
                 "backend log retrieval failed",
                 code="service_logs_failed",
@@ -461,25 +462,26 @@ class ServiceManager:
     def _shutdown(self) -> tuple[ServiceStatus, ...]:
         with self._shutdown_lock:
             with self._registry_lock:
-                if self._closed:
+                if self._cleanup_complete:
                     return tuple(self._status_snapshot(slot) for slot in self._ordered_slots_locked())
                 self._closing = True
+                self._closed = True
                 slots = self._ordered_slots_locked()
             self._emit("service.shutdown.started", EventLevel.INFO, "service manager shutdown started")
             failures: list[ServiceError] = []
-            for slot in slots:
-                with slot.lifecycle_lock:
-                    if slot.state == ServiceState.STOPPED:
-                        continue
-                    try:
-                        self._stop_locked(slot, allow_closing=True)
-                    except ServiceError as exc:
-                        failures.append(exc)
-            with self._registry_lock:
-                self._closed = True
-                self._closing = False
-                statuses = tuple(self._status_snapshot(slot) for slot in self._ordered_slots_locked())
-            self._unregister_atexit()
+            try:
+                for slot in slots:
+                    with slot.lifecycle_lock:
+                        if slot.state == ServiceState.STOPPED:
+                            continue
+                        try:
+                            self._stop_locked(slot, allow_closing=True)
+                        except ServiceError as exc:
+                            failures.append(exc)
+            finally:
+                with self._registry_lock:
+                    self._closing = False
+                    statuses = tuple(self._status_snapshot(slot) for slot in self._ordered_slots_locked())
             if failures:
                 error = ServiceError(
                     "service manager shutdown was incomplete",
@@ -499,6 +501,9 @@ class ServiceManager:
                     error=error,
                 )
                 raise error
+            with self._registry_lock:
+                self._cleanup_complete = True
+            self._unregister_atexit()
             self._emit("service.shutdown.completed", EventLevel.INFO, "service manager shutdown completed")
             return statuses
 
@@ -520,7 +525,7 @@ class ServiceManager:
         assert slot.backend is not None and slot.instance is not None
         try:
             slot.backend.check_health(slot.instance)
-        except BaseException as exc:
+        except Exception as exc:
             error = self._as_health_error(exc, slot)
             self._record_failure(slot, error, operation_id)
             self._finish_operation(slot, operation_id, error=error)
@@ -558,7 +563,7 @@ class ServiceManager:
                 )
         except ServiceConflictError:
             raise
-        except BaseException as exc:
+        except Exception as exc:
             raise ServiceConflictError(
                 "requested port could not be inspected",
                 code="service_port_probe_failed",
@@ -568,7 +573,7 @@ class ServiceManager:
         self._prepare_new_spec(slot, requested, target_backend_id, operation_id)
         try:
             resolved = resolve_runtime_settings(requested, self._hardware)
-        except BaseException as exc:
+        except Exception as exc:
             raise self._as_start_error(exc, slot, requested) from exc
         self._set_resolved_settings(slot, resolved)
         reporter = _ProgressReporter(
@@ -581,7 +586,7 @@ class ServiceManager:
         )
         try:
             returned_instance = backend.start(requested, resolved, reporter)
-        except BaseException as exc:
+        except Exception as exc:
             raise self._as_start_error(exc, slot, requested) from exc
         try:
             instance = self._validate_instance(returned_instance, requested, resolved)
@@ -608,7 +613,7 @@ class ServiceManager:
         self._set_instance(slot, backend, instance)
         try:
             backend.check_health(instance)
-        except BaseException as exc:
+        except Exception as exc:
             raise self._as_health_error(exc, slot) from exc
         self._transition(
             slot,
@@ -637,7 +642,7 @@ class ServiceManager:
             else:
                 self._transition(slot, state=ServiceState.STOPPED, operation_id=operation_id, endpoint=None, error=None)
             self._finish_operation(slot, operation_id)
-        except BaseException as exc:
+        except Exception as exc:
             error = self._as_stop_error(exc, slot)
             self._record_failure(slot, error, operation_id)
             self._finish_operation(slot, operation_id, error=error)
@@ -669,7 +674,7 @@ class ServiceManager:
         )
         try:
             slot.backend.stop(slot.instance, reporter)
-        except BaseException as exc:
+        except Exception as exc:
             raise self._as_stop_error(exc, slot) from exc
         self._transition(
             slot,
@@ -740,7 +745,7 @@ class ServiceManager:
         )
         try:
             backend.stop(instance, reporter)
-        except BaseException as exc:
+        except Exception as exc:
             error = self._as_stop_error(exc, slot)
             now = self._now()
             with self._registry_lock:
@@ -764,7 +769,7 @@ class ServiceManager:
         try:
             endpoint = ServiceEndpoint.model_validate(value.endpoint.model_dump())
             settings = ResolvedRuntimeSettings.model_validate(value.resolved_settings.model_dump())
-        except BaseException as exc:
+        except Exception as exc:
             raise ServiceStartupError(
                 "backend returned invalid instance fields",
                 code="service_backend_contract_invalid",
@@ -1112,7 +1117,7 @@ class ServiceManager:
                 error=None if error is None else error.to_info(),
             )
             self._event_emitter.emit(event)
-        except BaseException:
+        except Exception:
             pass
 
     def _unregister_atexit(self) -> None:

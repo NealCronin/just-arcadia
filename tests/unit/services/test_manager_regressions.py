@@ -334,12 +334,15 @@ def test_backend_service_error_is_preserved() -> None:
     assert operation.error is not None and operation.error.code == "backend_refused"
 
 
-def test_shutdown_continues_in_port_order_and_second_call_is_idempotent() -> None:
+def test_shutdown_continues_then_retries_only_failed_ports() -> None:
     stop_order: list[int] = []
+    failed_once = False
 
     def record_stop(instance: BackendInstance) -> None:
+        nonlocal failed_once
         stop_order.append(instance.endpoint.port)
-        if instance.endpoint.port == 19017:
+        if instance.endpoint.port == 19017 and not failed_once:
+            failed_once = True
             raise ServiceError("stop failed", code="chosen_stop_failure", details={"port": 19017})
 
     backend = RecordingBackend("llama_cpp", stop_hook=record_stop)
@@ -353,9 +356,15 @@ def test_shutdown_continues_in_port_order_and_second_call_is_idempotent() -> Non
     assert raised.value.code == "service_shutdown_incomplete"
     assert raised.value.details["failed_ports"] == [19017]
     assert stop_order == [19016, 19017, 19018]
+    with pytest.raises(ServiceError) as closed:
+        service_manager.stop_service(19017)
+    assert closed.value.code == "service_manager_closed"
+
     statuses = service_manager.shutdown()
     assert [status.port for status in statuses] == [19016, 19017, 19018]
-    assert stop_order == [19016, 19017, 19018]
+    assert stop_order == [19016, 19017, 19018, 19017]
+    assert service_manager.shutdown() == statuses
+    assert stop_order == [19016, 19017, 19018, 19017]
 
 
 def test_operation_ids_are_trimmed_for_lookup_and_duplicate_detection() -> None:
@@ -476,6 +485,61 @@ def test_atexit_callback_is_weak_and_unregistered(monkeypatch: pytest.MonkeyPatc
     gc.collect()
     assert manager_ref() is None
     callback()
+
+
+def test_atexit_callback_retries_incomplete_shutdown(monkeypatch: pytest.MonkeyPatch) -> None:
+    callbacks: list[Callable[[], None]] = []
+    unregistered: list[Callable[[], None]] = []
+    monkeypatch.setattr("arcadia.services.manager.atexit.register", callbacks.append)
+    monkeypatch.setattr("arcadia.services.manager.atexit.unregister", unregistered.append)
+    stop_attempts = 0
+
+    def transient_stop(instance: BackendInstance) -> None:
+        nonlocal stop_attempts
+        stop_attempts += 1
+        if stop_attempts == 1:
+            raise ServiceError(
+                "transient stop failure", code="transient_stop", details={"port": instance.endpoint.port}
+            )
+
+    backend = RecordingBackend("llama_cpp", stop_hook=transient_stop)
+    service_manager = make_manager({ServiceType.LLM: backend}, register_atexit=True)
+    service_manager.ensure_service(spec(19028))
+    callback = callbacks[0]
+
+    with pytest.raises(ServiceError) as incomplete:
+        service_manager.shutdown()
+    assert incomplete.value.code == "service_shutdown_incomplete"
+    assert unregistered == []
+
+    callback()
+
+    assert stop_attempts == 2
+    assert service_manager.get_status(19028).state == ServiceState.STOPPED
+    assert unregistered == [callback]
+
+
+def test_keyboard_interrupt_escapes_backend_boundaries() -> None:
+    starting = RecordingBackend("llama_cpp")
+    starting.start_error = KeyboardInterrupt()
+    with pytest.raises(KeyboardInterrupt):
+        make_manager({ServiceType.LLM: starting}).ensure_service(spec(19029))
+
+    checking = RecordingBackend("llama_cpp")
+    checking_manager = make_manager({ServiceType.LLM: checking})
+    checking_manager.ensure_service(spec(19030))
+    checking.health_error = KeyboardInterrupt()
+    with pytest.raises(KeyboardInterrupt):
+        checking_manager.check_health(19030)
+
+    def interrupt_stop(instance: BackendInstance) -> None:
+        raise KeyboardInterrupt
+
+    stopping = RecordingBackend("llama_cpp", stop_hook=interrupt_stop)
+    stopping_manager = make_manager({ServiceType.LLM: stopping})
+    stopping_manager.ensure_service(spec(19031))
+    with pytest.raises(KeyboardInterrupt):
+        stopping_manager.stop_service(19031)
 
 
 def test_operation_filtering_diagnostic_failures_and_stopped_logs() -> None:

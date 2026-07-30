@@ -445,31 +445,33 @@ Replacement must support a change of service type and backend.
 ### Failure translation
 
 - Preserve backend-raised `ServiceError` values after recording them.
-- Arbitrary start: `ServiceStartupError(code="service_startup_failed")`.
-- Arbitrary health: `ServiceHealthError(code="service_health_failed")`.
-- Arbitrary stop: `ServiceError(code="service_stop_failed")`.
+- Arbitrary `Exception` from start: `ServiceStartupError(code="service_startup_failed")`.
+- Arbitrary `Exception` from health: `ServiceHealthError(code="service_health_failed")`.
+- Arbitrary `Exception` from stop: `ServiceError(code="service_stop_failed")`.
 - Retain the original exception as `cause`.
+- `KeyboardInterrupt`, `SystemExit`, and other non-`Exception` `BaseException` values propagate unchanged.
 - Details may contain only safe values such as port, service type, backend ID, and exception type.
 - Never include environment values, handles, raw command lines/output, arbitrary file contents, or tracebacks in statuses or events.
 
 ### Shutdown
 
-`shutdown()` permanently closes the manager:
+`shutdown()` permanently closes ordinary lifecycle operations while keeping incomplete cleanup retryable:
 
-1. Atomically mark it closing so no new lifecycle operation begins.
+1. Atomically mark the manager closing and closed so no new ordinary lifecycle operation begins.
 2. Process managed ports in ascending order, one port lock at a time.
 3. Naturally wait for an already-running operation by acquiring its port lock.
 4. Attempt every remaining live or failed-owned stop even after individual failures.
-5. Mark closed and unregister `atexit`.
-6. Return final statuses when all stops succeed.
-7. After all attempts, raise `ServiceError(code="service_shutdown_incomplete")` when any stop failed; details contain only failed ports and stable error codes.
+5. Clear the closing flag but remain closed to ordinary lifecycle calls.
+6. When all stops succeed, mark cleanup complete, unregister `atexit`, and return final statuses.
+7. When any stop fails, retain failed-owned instances and the `atexit` callback, then raise `ServiceError(code="service_shutdown_incomplete")` with only failed ports and stable error codes.
 
 Additional rules:
 
-- A second shutdown is idempotent.
-- Lifecycle calls after shutdown raise `ServiceError(code="service_manager_closed")`.
+- After cleanup completes, repeated shutdown is an idempotent status read.
+- After incomplete cleanup, each repeated `shutdown()` retries only retained failed-owned instances.
+- Lifecycle calls other than shutdown after shutdown begins raise `ServiceError(code="service_manager_closed")`.
 - Status, operation, diagnostics, and logs remain readable after shutdown.
-- The `atexit` callback performs the same best-effort cleanup but suppresses escaping exceptions.
+- The registered `atexit` callback makes the same retry attempt and suppresses escaping exceptions; it is unregistered only after cleanup completes.
 - No guarantee is possible for `SIGKILL`, machine loss, or forced interpreter termination; backend process containment remains required.
 - `__exit__` calls shutdown. It must not replace an exception already active in the context with a cleanup exception.
 
@@ -707,21 +709,23 @@ Lifecycle failures preserve backend `ServiceError` values or translate arbitrary
 Passed:
 
 - `python -m pip install -e ".[dev]"`
-- `pytest tests/unit/services tests/contract/test_service_backend_contract.py tests/integration/test_service_manager_integration.py tests/test_package.py` — 52 passed.
+- `pytest tests/unit/services tests/contract/test_service_backend_contract.py tests/integration/test_service_manager_integration.py tests/test_package.py` — 54 passed.
 - `ruff format --check src/arcadia/services tests/unit/services tests/contract/test_service_backend_contract.py tests/integration/test_service_manager_integration.py tests/test_package.py`
 - `ruff check src/arcadia/services tests/unit/services tests/contract/test_service_backend_contract.py tests/integration/test_service_manager_integration.py tests/test_package.py`
 - `mypy src/arcadia`
 - `ruff format --check .`
 - `ruff check .`
-- `pytest` — 513 passed.
+- `pytest` — 515 passed.
 - `python -m build`
-- Clean-wheel smoke: created a temporary venv, installed the rebuilt wheel without source access, imported `arcadia.services`, ensured a service, and retrieved a normalized operation using padded lookup input.
+- Clean-wheel smoke: created a temporary venv, installed the rebuilt wheel without source access, exercised a transient stop failure, and verified that repeated shutdown retried and completed cleanup.
 
 ## Decisions and deviations
 
 The backend `start` contract is explicitly transactional. The manager best-effort stops an actual but invalid `BackendInstance`, retaining it only if cleanup fails. Synchronous lifecycle reentrancy from event sinks is rejected with `service_lifecycle_reentrant`; read-only callbacks remain supported.
 
 Review regressions now prove actual different-port overlap, cross-backend replacement, target backend event identity, retained-instance labeling after failed replacement, invalid-instance cleanup and retention, backend error preservation, ordered shutdown continuation and repeated shutdown, padded operation-ID lookup, concurrent diagnostics/log reads, context cleanup, lifecycle reentrancy rejection, sink isolation, weak atexit cleanup, operation filtering, stopped-instance access, and real `TcpPortInspector` behavior. The reusable backend contract now invokes backend `stop()` twice directly, in addition to testing the manager's stopped no-op.
+
+Shutdown closes ordinary lifecycle calls immediately but preserves retry capability for failed-owned instances. The atexit callback remains registered through incomplete cleanup and unregisters only after a successful retry. Backend, port-inspector, resolution, diagnostics, and log boundaries translate `Exception`, not `BaseException`, so interrupts and interpreter exits propagate.
 
 ## Known limitations
 
