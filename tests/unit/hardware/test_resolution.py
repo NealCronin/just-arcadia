@@ -41,6 +41,16 @@ def llama(values: dict[str, object]) -> LlamaServiceSpec:
     )
 
 
+def visual_llama(values: dict[str, object]) -> LlamaServiceSpec:
+    return LlamaServiceSpec(
+        service_type=ServiceType.VISUAL_LLM,
+        port=8082,
+        model=HuggingFaceFileSpec(repo_id="org/model", filename="model.gguf"),
+        projector=HuggingFaceFileSpec(repo_id="org/projector", filename="projector.gguf"),
+        requested_settings=RequestedRuntimeSettings(values=values),
+    )
+
+
 def sam(values: dict[str, object]) -> SamServiceSpec:
     return SamServiceSpec(
         port=8081, checkpoint_path="checkpoint.pt", requested_settings=RequestedRuntimeSettings(values=values)
@@ -67,6 +77,22 @@ def test_auto_falls_back_to_metal_then_cpu_and_sam_maps_backend() -> None:
     assert metal.notes == ("device auto-selected Metal accelerator 3",)
     assert cpu.values == {"device": "cpu"}
     assert cpu.notes == ("no supported accelerator detected; device auto-selected CPU",)
+
+
+def test_visual_llm_resolves_to_llama_cpp() -> None:
+    resolved = resolve_runtime_settings(visual_llama({}), hardware())
+    assert resolved.backend == "llama_cpp"
+    assert resolved.values == {"device": "cpu"}
+
+
+def test_auto_cuda_honors_an_explicit_available_index() -> None:
+    caps = hardware(
+        AcceleratorInfo(kind=DeviceKind.CUDA, index=2, name="two"),
+        AcceleratorInfo(kind=DeviceKind.CUDA, index=4, name="four"),
+    )
+    resolved = resolve_runtime_settings(llama({"device": "auto", "device_index": 4}), caps)
+    assert resolved.values == {"device": "cuda", "device_index": 4}
+    assert resolved.notes == ("device auto-selected CUDA",)
 
 
 def test_explicit_device_alias_threads_and_unknown_values_are_preserved() -> None:
@@ -100,6 +126,19 @@ def test_invalid_and_unavailable_requests_have_stable_codes(
     with pytest.raises(RuntimeResolutionError) as error:
         resolve_runtime_settings(llama(values), caps)
     assert error.value.code == code
+
+
+@pytest.mark.parametrize(
+    ("spec", "caps"),
+    [
+        (object(), hardware()),
+        (llama({}), object()),
+    ],
+)
+def test_resolution_rejects_invalid_public_argument_types(spec: object, caps: object) -> None:
+    with pytest.raises(RuntimeResolutionError) as error:
+        resolve_runtime_settings(spec, caps)  # type: ignore[arg-type]
+    assert error.value.code == "runtime_settings_invalid"
 
 
 def test_explicit_cuda_index_and_inputs_are_not_mutated_after_failure() -> None:

@@ -574,11 +574,12 @@ Completed:
 - `ruff format --check .` — 72 files already formatted.
 - `ruff check .` — success.
 - `mypy src/arcadia` — success.
-- `pytest` — 467 passed.
+- `pytest` — 474 passed.
 - `python -m build` — sdist and wheel built successfully.
 - Clean-wheel smoke test in `/tmp/arcadia-wheel-smoke-05` — installed the wheel, detected local hardware, validated the CPU/device and JSON round-trip invariants, and exercised CPU runtime resolution using synthetic hardware.
+- Manual local M3 Max smoke — detected `arm64`, 16 logical/physical cores, `Apple M3 Max` Metal accelerator 0, and 48 GiB unified system memory; accelerator memory remained unset, CUDA was absent, and JSON round-trip succeeded. No SSH host is configured for the RTX 4080 Super Windows machine, so that manual smoke test could not run from this workspace.
 
-Simulated unit coverage exercises Linux CPU/memory, Windows-memory failures and the typed `GlobalMemoryStatusEx` wrapper, Apple Silicon Metal and fallback name, zero-value macOS optional probes, Intel macOS exclusion, CUDA CSV ordering/comma names/MiB conversion, empty/nonzero/unsupported/malformed/failed CUDA probes, finite timeout validation, direct `shell=False` command invocation, repeated detached detection, partial snapshots, detached custom detectors, and resolution outcomes. No manual CUDA-host validation was performed.
+Simulated unit coverage exercises Linux CPU/memory, Windows-memory failures and the typed `GlobalMemoryStatusEx` wrapper, Apple Silicon Metal and fallback name, zero-value macOS optional probes, exact numeric validation, leading/trailing control rejection, Intel macOS exclusion, CUDA CSV ordering/comma names/MiB conversion, empty/nonzero/unsupported/malformed/failed CUDA probes, finite timeout validation, direct `shell=False` command invocation, repeated detached detection, partial snapshots, detached custom detectors, all service-type backend mappings, invalid resolver inputs, explicit CUDA auto indexes, and resolution outcomes. No manual CUDA-host validation was performed.
 
 ## Decisions and deviations
 

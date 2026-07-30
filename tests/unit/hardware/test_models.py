@@ -1,3 +1,4 @@
+from collections.abc import Callable
 from datetime import UTC, datetime, timedelta, timezone
 from typing import Any
 
@@ -85,3 +86,22 @@ def test_accelerators_require_unique_identities_and_json_details() -> None:
             machine="x\n86",
             python_version="3.11",
         )
+
+
+@pytest.mark.parametrize(
+    "factory",
+    [
+        lambda: CpuInfo(logical_cores=1, architecture="\tx86_64"),
+        lambda: AcceleratorInfo(kind=DeviceKind.CUDA, index=0, name="GPU\n"),
+        lambda: PlatformInfo(
+            operating_system=OperatingSystem.LINUX,
+            release="release",
+            version="version",
+            machine="\tmachine",
+            python_version="3.11",
+        ),
+    ],
+)
+def test_model_strings_reject_leading_and_trailing_controls(factory: Callable[[], object]) -> None:
+    with pytest.raises(ValidationError, match="control"):
+        factory()

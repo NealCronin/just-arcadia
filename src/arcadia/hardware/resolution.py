@@ -65,7 +65,6 @@ def resolve_runtime_settings(spec: ServiceSpec, hardware: HardwareCapabilities) 
     if requested_device == "auto":
         if cuda_accelerators:
             device = DeviceKind.CUDA
-            notes.append(f"device auto-selected CUDA accelerator {cuda_accelerators[0].index}")
         elif metal_accelerators:
             device = DeviceKind.METAL
             notes.append(f"device auto-selected Metal accelerator {metal_accelerators[0].index}")
@@ -100,6 +99,11 @@ def resolve_runtime_settings(spec: ServiceSpec, hardware: HardwareCapabilities) 
         else:
             index = cuda_accelerators[0].index
         values["device_index"] = index
+        if requested_device == "auto":
+            if "device_index" in spec.requested_settings.values:
+                notes.append("device auto-selected CUDA")
+            else:
+                notes.append(f"device auto-selected CUDA accelerator {index}")
     elif "device_index" in values:
         _invalid("device_index is valid only for CUDA")
 

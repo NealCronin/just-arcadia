@@ -42,9 +42,9 @@ class DeviceKind(StrEnum):
 def _string(value: Any, field_name: str, *, required: bool = True) -> str | None:
     if not isinstance(value, str):
         raise ValueError(f"{field_name} must be a string")
-    result = value.strip()
-    if _CONTROL_RE.search(result):
+    if _CONTROL_RE.search(value):
         raise ValueError(f"{field_name} must not contain control characters")
+    result = value.strip()
     if required and not result:
         raise ValueError(f"{field_name} must not be empty")
     return result
