@@ -149,3 +149,21 @@ def test_windows_launcher_marks_owned_process_group(tmp_path: Path) -> None:
     assert captured["creationflags"] != 0
     assert captured["shell"] is False
     assert "start_new_session" not in captured
+
+
+def test_windows_containment_falls_back_to_owned_tree_taskkill(monkeypatch: pytest.MonkeyPatch) -> None:
+    import subprocess
+    from types import SimpleNamespace
+
+    process = FakePopen(waits=[subprocess.TimeoutExpired("server", 1), 0])
+    calls: list[tuple[list[str], dict[str, Any]]] = []
+
+    def run(command: list[str], **kwargs: Any) -> SimpleNamespace:
+        calls.append((command, kwargs))
+        return SimpleNamespace(returncode=0)
+
+    monkeypatch.setattr(subprocess, "run", run)
+    managed = ManagedSubprocess(process, platform="win32")  # type: ignore[arg-type]
+    managed.terminate_tree(stop_timeout_seconds=1, kill_timeout_seconds=1)
+    assert calls[0][0] == ["taskkill", "/PID", "2468", "/T", "/F"]
+    assert calls[0][1]["shell"] is False

@@ -1,6 +1,6 @@
 # Session 07: llama.cpp Backend
 
-- Status: in-progress
+- Status: completed
 - Branch: `headless-core` — direct implementation and push required by the operator
 - Owner: local agent session
 - Module: `arcadia.backends.llama_cpp`
@@ -769,25 +769,25 @@ This manual smoke is useful but not required for ordinary CI or completion when 
 
 ## Definition of done
 
-- [ ] Work began from current clean `headless-core`.
-- [ ] The canonical session file was committed and pushed with status `in-progress`.
-- [ ] Required public API exists with backend ID `llama_cpp`.
-- [ ] Base imports remain lightweight and optional dependencies are lazy.
-- [ ] Exact model/projector cache and download behavior is implemented.
-- [ ] Split/wildcard model selection is rejected clearly.
-- [ ] Resolved ARCADIA settings produce deterministic safe server configuration.
-- [ ] CPU, one selected CUDA device, and Metal translation are covered.
-- [ ] Server launch uses an argument list, `shell=False`, config file, and owned log.
-- [ ] Startup waits for valid `/v1/models` readiness with bounded timeouts.
-- [ ] POSIX and Windows process-tree containment are implemented and simulated in tests.
-- [ ] Failed starts clean every attempt-owned process and temporary resource.
-- [ ] Health, idempotent stop, diagnostics, and bounded logs satisfy Session 06.
-- [ ] No cache file is automatically deleted.
-- [ ] No direct inference, SAM, transport, analysis, tool, CLI, or UI code was added.
-- [ ] Unit, contract, integration, package, full-suite, build, and clean-wheel validation pass or are recorded honestly.
-- [ ] Completion record and session index are accurate.
-- [ ] Final commits were pushed normally to `origin/headless-core`.
-- [ ] Working tree is clean and local `HEAD` equals `origin/headless-core`.
+- [x] Work began from current clean `headless-core`.
+- [x] The canonical session file was committed and pushed with status `in-progress`.
+- [x] Required public API exists with backend ID `llama_cpp`.
+- [x] Base imports remain lightweight and optional dependencies are lazy.
+- [x] Exact model/projector cache and download behavior is implemented.
+- [x] Split/wildcard model selection is rejected clearly.
+- [x] Resolved ARCADIA settings produce deterministic safe server configuration.
+- [x] CPU, one selected CUDA device, and Metal translation are covered.
+- [x] Server launch uses an argument list, `shell=False`, config file, and owned log.
+- [x] Startup waits for valid `/v1/models` readiness with bounded timeouts.
+- [x] POSIX and Windows process-tree containment are implemented and simulated in tests.
+- [x] Failed starts clean every attempt-owned process and temporary resource.
+- [x] Health, idempotent stop, diagnostics, and bounded logs satisfy Session 06.
+- [x] No cache file is automatically deleted.
+- [x] No direct inference, SAM, transport, analysis, tool, CLI, or UI code was added.
+- [x] Unit, contract, integration, package, full-suite, build, and clean-wheel validation pass or are recorded honestly.
+- [x] Completion record and session index are accurate.
+- [x] Final commits were pushed normally to `origin/headless-core`.
+- [x] Working tree is clean and local `HEAD` equals `origin/headless-core`.
 
 ## Stop conditions
 
@@ -810,75 +810,63 @@ An honest pushed partial implementation is preferable to an undocumented contrac
 
 # Completion record
 
-The implementation agent fills this section before stopping and changes the top status to `completed`, `partial`, or `blocked`.
-
 ## Outcome
 
-Describe what was implemented and the final status.
+Completed. `arcadia.backends.llama_cpp` now resolves exact GGUF files, translates resolved settings, launches and owns a synchronous `llama_cpp.server` subprocess, waits for OpenAI models-endpoint readiness, and provides bounded health, stop, diagnostics, and log behavior through the Session 06 backend contract.
 
 ## Git delivery
 
-Record:
-
-- starting `origin/headless-core` commit;
-- commits created by this session;
-- final pushed commit;
-- confirmation that local `HEAD` matched `origin/headless-core`;
-- any rebase or push conflict resolution;
-- confirmation that no force push was used.
+- Starting `origin/headless-core`: `f6f7cfcda2c326ddbcb54d522a655d45b5b8d5f8`.
+- Session-start commit: `e76f87a` (`docs: start llama-cpp backend session`), pushed before implementation.
+- Implementation commit: `7636e84` (`feat: add llama-cpp service backend`), pushed normally.
+- Final pushed commit: the completion-record commit containing this section and the final Windows-containment regression test; local `HEAD` was verified against `origin/headless-core` after push.
+- No rebase conflict occurred and no force push was used.
 
 ## Files changed
 
-List source, tests, dependency metadata, and documentation.
+- Added `src/arcadia/backends/__init__.py` and `src/arcadia/backends/llama_cpp/{__init__,backend,config,files,health,process,settings}.py`.
+- Added unit tests under `tests/unit/backends/llama_cpp/`, reusable fakes under `tests/helpers/`, the llama backend contract test, and the local-subprocess integration test.
+- Updated `tests/test_package.py`, `pyproject.toml`, this session record, and `docs/sessions/README.md`.
 
 ## Delivered public API
 
-Record the actual stable imports and any differences from the planned contract.
+`from arcadia.backends.llama_cpp import LLAMA_CPP_BACKEND_ID, LlamaCppBackendConfig, LlamaCppBackend` is stable. `LLAMA_CPP_BACKEND_ID == "llama_cpp"` and `LlamaCppBackend` satisfies the runtime-checkable `ServiceBackend` protocol. `arcadia.backends` and the root package do not re-export concrete backends.
 
 ## State and side effects
 
-Document:
-
-- cache reads/downloads;
-- runtime/config/log files;
-- child process and process-tree ownership;
-- HTTP health requests;
-- environment changes applied only to the child;
-- cleanup and retained post-stop log behavior.
+The default resolver first performs an exact cache-only `hf_hub_download`, then downloads only the exact repository, filename, and revision after a cache miss. Each start owns a private runtime directory, restrictive JSON config, retained binary log, child process, containment boundary, endpoint, and identities. Successful readiness removes the config; failed startup terminates/reaps the tree and removes all attempt files. Stop retains the log until the opaque handle is discarded. Health uses bounded `GET /v1/models` requests. CUDA selection changes only the child environment. Hugging Face cache files are never modified or deleted.
 
 ## Settings translation
 
-Record the accepted option shapes, reserved keys, device translation, and generated server configuration behavior.
+`server_options` and `model_options` accept detached JSON objects with lowercase snake-case keys; other non-owned top-level values merge into model options without duplicates. Backend-owned server/model identity keys, credentials/private keys, ambiguous `threads`/`n_threads`, and non-finite values are rejected. CPU defaults `n_gpu_layers=0`, CUDA defaults `-1` plus one `CUDA_VISIBLE_DEVICES` index, Metal defaults `-1`, compatible explicit partial offload is retained, and `threads` maps to `n_threads`. The generated config contains one local model and an optional projector.
 
 ## Errors
 
-List stable codes actually emitted and any deviations.
+The implementation emits the planned stable `llama_cpp_*` codes for missing dependencies, invalid specs/backend/settings, split GGUF, model resolution, process launch/exit/timeout, invalid handles, process health, health probes, stop, diagnostics, and logs. Public details contain only bounded identities, PID/return code, setting names, and exception types; raw exceptions remain in `cause`.
 
 ## Tests and validation
 
-List exact commands run and exact results. Never claim an unexecuted command passed.
-
-Separate:
-
-- focused tests;
-- full suite;
-- build;
-- clean-wheel smoke;
-- optional real llama.cpp/model smoke;
-- simulated versus real Windows/POSIX containment coverage.
+- `python -m pip install -e ".[dev]"` — passed.
+- Initial focused run found two test-fixture defects; after correction, `pytest -q tests/unit/backends/llama_cpp tests/contract/test_llama_cpp_backend_contract.py tests/integration/test_llama_cpp_backend_integration.py tests/test_package.py` — 57 passed.
+- Final `ruff format --check .` — 100 files already formatted; `ruff check .` and `mypy src/arcadia` — passed.
+- Final full suite after adding the Windows fallback assertion: `pytest -q` — 560 passed.
+- `python -m build` — built the sdist and base wheel; the wheel contains the new backend package.
+- Clean-wheel smoke in `/tmp/arcadia-wheel-smoke-07` — the first script run exposed and corrected a smoke-fixture progress-enum error; the final isolated base-wheel run printed `clean-wheel-smoke-ok`. It verified lazy imports, typed missing-dependency startup, fake-boundary manager lifecycle, JSON serialization, and no handle/absolute-path leakage.
+- POSIX containment was simulated for graceful-to-forced signaling and exercised with a real local child process tree on macOS. Windows `CREATE_NEW_PROCESS_GROUP` launch and owned-PID `taskkill /T /F` fallback were simulated. No Windows host was available for a real process-tree smoke.
+- No real llama.cpp runtime/model smoke was run; standard tests used fake GGUF files and a local standard-library HTTP subprocess without network downloads.
 
 ## Decisions and deviations
 
-Record new ADRs, dependency-version changes, contract deviations, or implementation choices that later sessions must know.
+No earlier public contract or base dependency changed, and no ADR was needed. The optional `llama` extra is `huggingface-hub>=0.34,<2` plus `llama-cpp-python[server]>=0.3,<0.4`. POSIX uses a new session/process group. Windows uses the allowed `CREATE_NEW_PROCESS_GROUP` plus exact owned-PID `taskkill /T` fallback because portable `subprocess.Popen` does not expose a race-free suspended-thread Job Object assignment boundary.
 
 ## Known limitations
 
-Record unsupported server options, platforms, model layouts, authentication, runtime builds, or cleanup caveats.
+Split GGUF, gated-repository workflows, authentication/TLS settings, multiple models, automatic fit/tuning/restart/cache eviction, in-process inference, and runtime wheel capability detection remain unsupported. Windows containment has simulated coverage only. Logs remain available while the backend handle is retained and are removed best-effort when that handle is discarded.
 
 ## Assumptions and risks
 
-Be explicit that detected hardware does not prove the installed llama-cpp-python build supports it, and that upstream server settings may evolve.
+Detected CUDA or Metal hardware does not prove the installed `llama-cpp-python` wheel supports that accelerator. Upstream server option names and JSON configuration behavior may evolve within the bounded dependency range; power-user options are validated but otherwise passed through.
 
 ## Next-session prerequisites
 
-State exactly what Session 08 or Sessions 09–12 may rely on, including backend construction, endpoint readiness, diagnostics/log guarantees, process cleanup, and optional dependency behavior.
+Later sessions may construct one `LlamaCppBackend` for both LLM service types, pass it to `ServiceManager`, and rely on return only after `/v1/models` readiness, advertised endpoints, exact model identity, transactional startup, complete owned-tree stop, post-stop diagnostics/logs, and lazy optional dependencies. Direct inference remains a later-session responsibility.

@@ -26,6 +26,7 @@ Do not create separate session prompts, design documents, handoff templates, or 
 | 04 | Run storage and reproducibility | Completed |
 | 05 | Hardware detection and runtime resolution | Completed |
 | 06 | Service manager and backend contract | Completed |
+| 07 | llama.cpp backend | Completed |
 
 ## Session lifecycle
 
