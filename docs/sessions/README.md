@@ -23,6 +23,7 @@ Do not create separate session prompts, design documents, handoff templates, or 
 | 01 | Domain models and errors | Completed |
 | 02 | Configuration | Completed |
 | 03 | Events and structured logging | Completed |
+| 04 | Run storage and reproducibility | Completed |
 
 ## Session lifecycle
 
