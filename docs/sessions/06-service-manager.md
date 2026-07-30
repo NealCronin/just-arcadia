@@ -244,6 +244,7 @@ Backend requirements:
 
 - `backend_id` is stable and non-empty, for example `llama_cpp` or `sam3`.
 - `start` may synchronously resolve/download assets and launch a service, but must not mutate its inputs.
+- `start` is transactional: before raising it cleans every process, listener, model allocation, temporary file, and other resource created during that attempt.
 - `check_health` returns normally only when the instance is usable.
 - `stop` is idempotent for an already-exited manager-owned instance.
 - Process backends terminate their complete owned process tree using platform-appropriate containment. Session 06 defines this requirement; later backend sessions implement it.
@@ -384,8 +385,9 @@ Under the per-port lifecycle lock:
 4. Record `RESOLVING` and call `resolve_runtime_settings(spec, hardware)` without mutating inputs.
 5. Call backend `start` with a start-only progress reporter.
 6. Validate the `BackendInstance`: endpoint port/type match the spec and returned backend name matches initial resolution.
-7. Call backend `check_health` once.
-8. Record `READY`, endpoint, final resolved settings, and `started_at`.
+7. If an actual `BackendInstance` fails validation, call its creating backend's `stop` best-effort before rejecting it; retain it for shutdown if cleanup fails.
+8. Call backend `check_health` once.
+9. Record `READY`, endpoint, final resolved settings, and `started_at`.
 
 Invalid backend results raise `ServiceStartupError(code="service_backend_contract_invalid")`.
 
@@ -482,6 +484,7 @@ Requirements:
 - Never hold the registry lock while calling port inspection, resolution, backend methods, event sinks, or user-provided clock/ID functions.
 - Normal lifecycle operations acquire only one port lock.
 - Event-sink failure never changes lifecycle outcome.
+- Lifecycle calls reentered synchronously from an event sink on the same manager thread fail with `ServiceError(code="service_lifecycle_reentrant")`; read-only callbacks remain allowed.
 - Introduce no background thread, async lock, or global mutable singleton.
 
 Required invariants:
@@ -699,19 +702,21 @@ Lifecycle failures preserve backend `ServiceError` values or translate arbitrary
 Passed:
 
 - `python -m pip install -e ".[dev]"`
-- `pytest tests/unit/services tests/contract/test_service_backend_contract.py tests/integration/test_service_manager_integration.py tests/test_package.py` — 24 passed.
+- `pytest tests/unit/services tests/contract/test_service_backend_contract.py tests/integration/test_service_manager_integration.py tests/test_package.py` — 37 passed.
 - `ruff format --check src/arcadia/services tests/unit/services tests/contract/test_service_backend_contract.py tests/integration/test_service_manager_integration.py tests/test_package.py`
 - `ruff check src/arcadia/services tests/unit/services tests/contract/test_service_backend_contract.py tests/integration/test_service_manager_integration.py tests/test_package.py`
 - `mypy src/arcadia`
 - `ruff format --check .`
 - `ruff check .`
-- `pytest` — 485 passed.
+- `pytest` — 498 passed.
 - `python -m build`
-- Clean-wheel smoke: created a temporary venv, installed the built wheel without source access, imported `arcadia.services`, exercised ensure/diagnostics/logs/reuse/stop/shutdown, round-tripped public snapshots, and confirmed no `torch` or `llama_cpp` import.
+- Clean-wheel smoke: created a temporary venv, installed the rebuilt wheel without source access, imported `arcadia.services`, exercised normalized operation lookup plus ensure/stop, and confirmed no `torch` or `llama_cpp` import.
 
 ## Decisions and deviations
 
-No deviations. The manager retains a stopped instance only for backend diagnostics/log access and never exposes its opaque handle.
+The backend `start` contract is explicitly transactional. The manager best-effort stops an actual but invalid `BackendInstance`, retaining it only if cleanup fails. Synchronous lifecycle reentrancy from event sinks is rejected with `service_lifecycle_reentrant`; read-only callbacks remain supported.
+
+Review regressions now prove actual different-port overlap, cross-backend replacement, invalid-instance cleanup and retention, backend error preservation, ordered shutdown continuation and repeated shutdown, operation-ID normalization, concurrent diagnostics/log reads, context cleanup, lifecycle reentrancy rejection, sink isolation, weak atexit cleanup, operation filtering, and stopped-instance access. The backend contract test exposes `assert_service_backend_contract(...)` for Sessions 07 and 08 to reuse or parameterize.
 
 ## Known limitations
 
@@ -719,7 +724,7 @@ This session intentionally supplies no real backend, listener/process implementa
 
 ## Assumptions and risks
 
-Future backends must honor the `ServiceBackend` ownership, progress, bounded diagnostics/log, and idempotent-stop contract. Process-tree containment remains a backend responsibility.
+Future backends must honor the transactional `ServiceBackend.start`, ownership, progress, bounded diagnostics/log, and idempotent-stop contracts. Process-tree containment remains a backend responsibility.
 
 ## Next-session prerequisites
 

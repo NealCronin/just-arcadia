@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import Any
 
@@ -80,26 +81,38 @@ def _spec() -> LlamaServiceSpec:
     )
 
 
-def test_backend_contract_through_manager() -> None:
-    backend = ContractBackend()
+def assert_service_backend_contract(
+    backend_factory: Callable[[], ServiceBackend],
+    *,
+    hardware: HardwareCapabilities,
+    spec: ServiceSpec,
+) -> None:
+    """Exercise the reusable contract shared by fake and future real backends."""
+
+    backend = backend_factory()
     assert isinstance(backend, ServiceBackend)
     service_manager = ServiceManager(
-        hardware=_hardware(),
-        backends={ServiceType.LLM: backend},
+        hardware=hardware,
+        backends={spec.service_type: backend},
         port_inspector=FreeInspector(),
         register_atexit=False,
     )
-    requested = _spec()
-    original = requested.model_dump_json()
+    original = spec.model_dump_json()
 
-    ready = service_manager.ensure_service(requested)
-    diagnostics = service_manager.get_diagnostics(requested.port)
-    logs = service_manager.get_logs(requested.port, tail_lines=2)
+    ready = service_manager.ensure_service(spec)
+    diagnostics = service_manager.get_diagnostics(spec.port)
+    logs = service_manager.get_logs(spec.port, tail_lines=2)
 
-    assert requested.model_dump_json() == original
-    assert ready.endpoint is not None and ready.endpoint.port == requested.port
+    assert spec.model_dump_json() == original
+    assert ready.endpoint is not None and ready.endpoint.port == spec.port
     assert ready.resolved_settings is not None and ready.resolved_settings.backend == backend.backend_id
-    assert diagnostics.details == {"pid": 42, "version": "test"}
-    assert logs.text == "two\nthree\n"
+    assert len(logs.text.splitlines()) <= 2
+    assert diagnostics.model_validate_json(diagnostics.model_dump_json()) == diagnostics
+    assert logs.model_validate_json(logs.model_dump_json()) == logs
     assert "handle" not in ready.model_dump_json()
-    assert service_manager.stop_service(requested.port).state == ServiceState.STOPPED
+    assert service_manager.stop_service(spec.port).state == ServiceState.STOPPED
+    assert service_manager.stop_service(spec.port).state == ServiceState.STOPPED
+
+
+def test_fake_backend_satisfies_reusable_contract() -> None:
+    assert_service_backend_contract(ContractBackend, hardware=_hardware(), spec=_spec())

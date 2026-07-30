@@ -50,7 +50,12 @@ class ServiceBackend(Protocol):
         resolved_settings: ResolvedRuntimeSettings,
         progress: BackendProgressReporter,
     ) -> BackendInstance:
-        """Synchronously create a backend-owned service instance."""
+        """Synchronously create a backend-owned service instance.
+
+        This call is transactional: before raising, an implementation must
+        release every process, listener, model allocation, temporary file,
+        and other resource created during the attempt.
+        """
         ...
 
     def check_health(self, instance: BackendInstance) -> None:

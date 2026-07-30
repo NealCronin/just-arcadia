@@ -8,7 +8,8 @@ import math
 import threading
 import uuid
 import weakref
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Generator, Mapping
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
@@ -159,6 +160,7 @@ class ServiceManager:
         self._operation_id_factory = operation_id_factory or (lambda: str(uuid.uuid4()))
         self._registry_lock = threading.RLock()
         self._shutdown_lock = threading.Lock()
+        self._lifecycle_local = threading.local()
         self._slots: dict[int, _Slot] = {}
         self._operations: list[OperationStatus] = []
         self._operation_by_id: dict[str, OperationStatus] = {}
@@ -205,6 +207,10 @@ class ServiceManager:
     def ensure_service(self, spec: ServiceSpec) -> ServiceStatus:
         """Ensure a healthy service matching ``spec`` exists on its requested port."""
 
+        with self._lifecycle_call():
+            return self._ensure_service(spec)
+
+    def _ensure_service(self, spec: ServiceSpec) -> ServiceStatus:
         requested = self._copy_spec(spec)
         self._assert_lifecycle_open()
         slot = self._get_or_create_slot(requested)
@@ -233,6 +239,10 @@ class ServiceManager:
     def stop_service(self, port: int) -> ServiceStatus:
         """Stop a manager-owned service on ``port``."""
 
+        with self._lifecycle_call():
+            return self._stop_service(port)
+
+    def _stop_service(self, port: int) -> ServiceStatus:
         checked_port = _validate_port(port)
         self._assert_lifecycle_open()
         slot = self._get_slot(checked_port)
@@ -247,6 +257,10 @@ class ServiceManager:
     def check_health(self, port: int) -> ServiceStatus:
         """Perform one explicit health check against a ready manager-owned instance."""
 
+        with self._lifecycle_call():
+            return self._check_health(port)
+
+    def _check_health(self, port: int) -> ServiceStatus:
         checked_port = _validate_port(port)
         self._assert_lifecycle_open()
         slot = self._get_slot(checked_port)
@@ -416,6 +430,10 @@ class ServiceManager:
     def shutdown(self) -> tuple[ServiceStatus, ...]:
         """Best-effort stop every owned service and permanently close the manager."""
 
+        with self._lifecycle_call():
+            return self._shutdown()
+
+    def _shutdown(self) -> tuple[ServiceStatus, ...]:
         with self._shutdown_lock:
             with self._registry_lock:
                 if self._closed:
@@ -524,10 +542,31 @@ class ServiceManager:
         self._set_resolved_settings(slot, resolved)
         reporter = _ProgressReporter(self, slot, operation_id, _START_PROGRESS_STATES)
         try:
-            instance = backend.start(requested, resolved, reporter)
+            returned_instance = backend.start(requested, resolved, reporter)
         except BaseException as exc:
             raise self._as_start_error(exc, slot, requested) from exc
-        instance = self._validate_instance(instance, requested, resolved)
+        try:
+            instance = self._validate_instance(returned_instance, requested, resolved)
+        except ServiceStartupError as validation_error:
+            if isinstance(returned_instance, BackendInstance):
+                cleanup_error = self._cleanup_invalid_instance(
+                    slot,
+                    backend,
+                    returned_instance,
+                    operation_id,
+                )
+                if cleanup_error is not None:
+                    raise ServiceStartupError(
+                        "backend returned an invalid instance and cleanup failed",
+                        code="service_backend_contract_invalid",
+                        details={
+                            "port": requested.port,
+                            "service_type": requested.service_type.value,
+                            "cleanup_error_code": cleanup_error.code,
+                        },
+                        cause=validation_error,
+                    ) from cleanup_error
+            raise
         self._set_instance(slot, backend, instance)
         try:
             backend.check_health(instance)
@@ -608,6 +647,27 @@ class ServiceManager:
             slot.resolved_settings = ResolvedRuntimeSettings.model_validate(instance.resolved_settings.model_dump())
             slot.updated_at = self._non_decreasing(now, slot.updated_at)
 
+    def _cleanup_invalid_instance(
+        self,
+        slot: _Slot,
+        backend: ServiceBackend,
+        instance: BackendInstance,
+        operation_id: str,
+    ) -> ServiceError | None:
+        reporter = _ProgressReporter(self, slot, operation_id, _STOP_PROGRESS_STATES)
+        try:
+            backend.stop(instance, reporter)
+        except BaseException as exc:
+            error = self._as_stop_error(exc, slot)
+            now = self._now()
+            with self._registry_lock:
+                slot.backend = backend
+                slot.backend_id = self._backend_id(backend)
+                slot.instance = instance
+                slot.updated_at = self._non_decreasing(now, slot.updated_at)
+            return error
+        return None
+
     def _validate_instance(
         self,
         value: object,
@@ -638,16 +698,17 @@ class ServiceManager:
         return BackendInstance(endpoint=endpoint, resolved_settings=settings, handle=value.handle)
 
     def _start_operation(self, slot: _Slot) -> str:
-        operation_id = self._operation_id_factory()
-        if not isinstance(operation_id, str) or not operation_id.strip():
+        raw_operation_id = self._operation_id_factory()
+        if not isinstance(raw_operation_id, str) or not raw_operation_id.strip():
             raise ServiceError("operation ID factory returned an invalid ID", code="service_operation_invalid")
+        operation_id = raw_operation_id.strip()
         now = self._now()
         with self._registry_lock:
             if operation_id in self._operation_by_id:
                 raise ServiceError("operation ID factory returned a duplicate ID", code="service_operation_invalid")
             timestamp = self._non_decreasing(now, slot.updated_at)
             pending = OperationStatus(
-                operation_id=operation_id.strip(),
+                operation_id=operation_id,
                 port=slot.port,
                 state=OperationState.PENDING,
                 updated_at=timestamp,
@@ -831,6 +892,19 @@ class ServiceManager:
 
     def _ordered_slots_locked(self) -> tuple[_Slot, ...]:
         return tuple(self._slots[port] for port in sorted(self._slots))
+
+    @contextmanager
+    def _lifecycle_call(self) -> Generator[None, None, None]:
+        if getattr(self._lifecycle_local, "active", False):
+            raise ServiceError(
+                "reentrant service lifecycle operations are not allowed",
+                code="service_lifecycle_reentrant",
+            )
+        self._lifecycle_local.active = True
+        try:
+            yield
+        finally:
+            self._lifecycle_local.active = False
 
     def _assert_lifecycle_open(self) -> None:
         with self._registry_lock:
